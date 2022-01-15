@@ -79,9 +79,9 @@ pub fn World(comptime ComponentBase: type) type {
             };
         }
 
-        pub fn create(this: *@This(), component: Component) usize {
+        pub fn create(this: *@This(), component: Component) !usize {
             const len = this.components.len;
-            this.components.append(this.alloc, component) catch unreachable;
+            try this.components.append(this.alloc, component);
             return len;
         }
 
@@ -92,7 +92,7 @@ pub fn World(comptime ComponentBase: type) type {
             @compileError("unimplemented");
         }
 
-        pub fn get(this: *@This(), entity: usize, component: ComponentEnum) *Component {
+        pub fn get(this: *@This(), entity: usize, comptime component: ComponentEnum) *Component {
             return this.components.items(component)[entity];
         }
 
