@@ -45,9 +45,15 @@ test "stack version check" {
 }
 
 pub fn build(b: *std.build.Builder) !void {
+    const assets = std.build.Pkg{
+        .name = "assets",
+        .path = .{ .path = "assets/assets.zig" },
+    };
+
     const zig_version = @import("builtin").zig_version;
     const mode = b.standardReleaseOptions();
     const lib = b.addSharedLibrary("cart", "src/main.zig", .unversioned);
+    lib.addPackage(assets);
     lib.setBuildMode(mode);
     lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     lib.import_memory = true;
