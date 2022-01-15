@@ -110,12 +110,23 @@ export fn update() void {
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
 
-    w4.DRAW_COLORS.* = 0x0010;
-    for (assets.map) |tilePlus, i| {
+    w4.DRAW_COLORS.* = 0x0210;
+    for (assets.solid) |tilePlus, i| {
         const tile = tilePlus - 1;
         const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
         const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
         w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
+        const conduitRaw = assets.conduit[i];
+        if (conduitRaw != 0) {
+            const conduittile = conduitRaw - 1;
+            const tconduit = w4.Vec2{ @intCast(i32, (conduittile % 16) * 8), @intCast(i32, (conduittile / 16) * 8) };
+            w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, tconduit, 128, .{ .bpp = .b2 });
+        }
+    }
+
+    w4.DRAW_COLORS.* = 0x0001;
+    for (assets.wire) |wire| {
+        w4.line(wire[0], wire[1]);
     }
 }
 

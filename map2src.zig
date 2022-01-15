@@ -1,14 +1,34 @@
 const std = @import("std");
 
+const Point = struct {
+    x: f64 = 0,
+    y: f64 = 0,
+};
+
+const Object = struct {
+    height: u64 = 0,
+    id: u64 = 0,
+    name: []const u8,
+    polyline: []Point,
+    rotation: f64 = 0,
+    @"type": []const u8 = "",
+    visible: bool = true,
+    width: u64 = 0,
+    x: f64 = 0,
+    y: f64 = 0,
+};
+
 const Layer = struct {
-    data: []u64,
-    height: u64,
+    data: []u64 = &.{},
+    objects: []Object = &.{},
+    height: u64 = 0,
     id: u64,
     name: []const u8,
+    draworder: enum { topdown, none } = .none,
     opacity: u64,
-    @"type": enum { tilelayer },
+    @"type": enum { tilelayer, objectgroup },
     visible: bool,
-    width: u64,
+    width: u64 = 0,
     x: i64,
     y: i64,
 };
@@ -58,8 +78,36 @@ pub fn main() anyerror!void {
         const map = try std.json.parse(MapType, &tokenstream, options);
         defer std.json.parseFree(MapType, map, options);
 
-        var outbuffer: [64 * KB]u8 = undefined;
-        var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const map: [{}]u8 = .{any};\n", .{ map.layers[0].data.len, map.layers[0].data });
-        _ = try output.writeAll(outcontent);
+        var outlist = std.ArrayList(u8).init(alloc);
+        defer outlist.deinit();
+
+        try outlist.appendSlice("const std = @import(\"std\");\n");
+        try outlist.appendSlice("const Vec2 = std.meta.Vector(2,i32);\n");
+
+        var outbuffer: [4 * KB]u8 = undefined;
+        for (map.layers) |layer| {
+            switch (layer.@"type") {
+                .tilelayer => {
+                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}]u8 = .{any};\n", .{ layer.name, layer.data.len, layer.data });
+                    _ = try outlist.appendSlice(outcontent);
+                },
+                .objectgroup => {
+                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}][2]Vec2 = [_][2]Vec2{{", .{ layer.name, layer.objects.len });
+                    try outlist.appendSlice(outcontent);
+
+                    for (layer.objects) |obj| {
+                        try outlist.appendSlice(".{");
+                        for (obj.polyline) |point| {
+                            var pointf = try std.fmt.bufPrint(&outbuffer, ".{{ {}, {} }},", .{ @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
+                            try outlist.appendSlice(pointf);
+                        }
+                        try outlist.appendSlice("}, ");
+                    }
+                    try outlist.appendSlice("};\n");
+                },
+            }
+        }
+        std.log.info("{s}", .{outlist.items});
+        _ = try output.writeAll(outlist.items);
     }
 }
