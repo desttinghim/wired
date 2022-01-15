@@ -59,7 +59,7 @@ pub fn main() anyerror!void {
         defer std.json.parseFree(MapType, map, options);
 
         var outbuffer: [64 * KB]u8 = undefined;
-        var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const map: [{}]u8 = {any};\n", .{ map.layers[0].data.len, map.layers[0].data });
+        var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const map: [{}]u8 = .{any};\n", .{ map.layers[0].data.len, map.layers[0].data });
         _ = try output.writeAll(outcontent);
     }
 }

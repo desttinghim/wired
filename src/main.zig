@@ -102,24 +102,25 @@ export fn start() void {
 }
 
 export fn update() void {
+    w4.DRAW_COLORS.* = 0x0004;
+    w4.rect(.{ 0, 0 }, .{ 160, 160 });
+
     world.process(1, &.{ .pos, .control }, controlProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
 
-    w4.DRAW_COLORS.* = 2;
-    w4.text("Hello from Zig!", .{ 10, 10 });
-
-    if (w4.GAMEPAD1.button_1) {
-        w4.DRAW_COLORS.* = 4;
+    w4.DRAW_COLORS.* = 0x0010;
+    for (assets.map) |tilePlus, i| {
+        const tile = tilePlus - 1;
+        const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
+        const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
+        w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
     }
-
-    // w4.blit(&smiley, .{ 76, 76 }, .{ 8, 8 }, .{ .bpp = .b1 });
-    w4.text("Press X to blink", .{ 16, 90 });
 }
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
-    w4.DRAW_COLORS.* = 0x0030;
+    w4.DRAW_COLORS.* = 0x0010;
     const ipos = w4.Vec2{ @floatToInt(i32, pos.*[0]), @floatToInt(i32, pos.*[1]) };
     const t = w4.Vec2{ @intCast(i32, (sprite.index * 8) % 128), @intCast(i32, (sprite.index * 8) / 128) };
     w4.blitSub(&assets.sprites, ipos, .{ 8, 8 }, t, 128, sprite.flags);
