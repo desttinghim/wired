@@ -48,8 +48,12 @@ const Anim = struct {
 
 // Components
 const Pos = Vec2f;
-const Control = struct { controller: enum { player }, state: enum { stand, walk, jump, fall } };
-const Sprite = usize;
+const Control = struct {
+    controller: enum { player },
+    state: enum { stand, walk, jump, fall },
+    facing: enum { left, right } = .right,
+};
+const Sprite = struct { index: usize, flags: w4.BlitFlags };
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
 const Component = struct {
@@ -89,7 +93,7 @@ export fn start() void {
     _ = world.create(.{
         .pos = .{ 76, 76 },
         .control = .{ .controller = .player, .state = .stand },
-        .sprite = 0,
+        .sprite = .{ .index = 0, .flags = .{ .bpp = .b1 } },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
             .state = Anim{ .anim = &.{} },
@@ -116,19 +120,20 @@ export fn update() void {
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
     w4.DRAW_COLORS.* = 0x0030;
-    const tx = (sprite.* * 8) % 128;
-    const ty = (sprite.* * 8) / 128;
-    w4.externs.blitSub(&assets.sprites, @floatToInt(i32, pos.*[0]), @floatToInt(i32, pos.*[1]), 8, 8, tx, ty, 128, assets.sprites_flags);
+    const ipos = w4.Vec2{ @floatToInt(i32, pos.*[0]), @floatToInt(i32, pos.*[1]) };
+    const t = w4.Vec2{ @intCast(i32, (sprite.index * 8) % 128), @intCast(i32, (sprite.index * 8) / 128) };
+    w4.blitSub(&assets.sprites, ipos, .{ 8, 8 }, t, 128, sprite.flags);
 }
 
 fn staticAnimProcess(_: f32, sprite: *Sprite, anim: *StaticAnim) void {
-    anim.update(sprite);
+    anim.update(&sprite.index);
 }
 
 fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Control) void {
     const a: usize = if (control.state == .stand) 0 else 1;
+    sprite.flags.flip_x = (control.facing == .left);
     anim.state.play(anim.anims[a]);
-    anim.state.update(sprite);
+    anim.state.update(&sprite.index);
 }
 
 fn controlProcess(_: f32, pos: *Pos, control: *Control) void {
@@ -140,6 +145,10 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control) void {
     if (delta[0] != 0 or delta[1] != 0) {
         control.state = .walk;
         pos.* += delta;
+        if (pos.*[0] < 0) pos.*[0] = 0;
+        if (pos.*[0] > 152) pos.*[0] = 152;
+        if (delta[0] > 0) control.facing = .right;
+        if (delta[0] < 0) control.facing = .left;
     } else {
         control.state = .stand;
     }

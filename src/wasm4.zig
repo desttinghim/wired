@@ -200,13 +200,13 @@ pub const externs = struct {
 
 /// Copies pixels to the framebuffer.
 pub fn blit(sprite: []const u8, pos: Vec2, size: Vec2, flags: BlitFlags) void {
-    if (sprite.len * 8 != size[x] * size[y]) unreachable;
+    if (sprite.len * 8 < size[x] * size[y]) unreachable;
     externs.blit(sprite.ptr, pos[x], pos[y], size[x], size[y], @bitCast(u32, flags));
 }
 
 /// Copies a subregion within a larger sprite atlas to the framebuffer.
 pub fn blitSub(sprite: []const u8, pos: Vec2, size: Vec2, src: Vec2, strie: i32, flags: BlitFlags) void {
-    if (sprite.len * 8 >= size[x] * size[y]) trace("Sprite not large enough {}", .{sprite.len});
+    if (sprite.len * 8 < size[x] * size[y]) unreachable;
     externs.blitSub(sprite.ptr, pos[x], pos[y], size[x], size[y], @intCast(u32, src[x]), @intCast(u32, src[y]), strie, @bitCast(u32, flags));
 }
 
