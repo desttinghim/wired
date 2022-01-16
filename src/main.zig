@@ -3,8 +3,16 @@ const w4 = @import("wasm4.zig");
 const ecs = @import("ecs.zig");
 const assets = @import("assets");
 
+const Vec2 = std.meta.Vector(2, i32);
 const Vec2f = std.meta.Vector(2, f32);
-const AABB = struct { offset: Vec2f, size: Vec2f };
+const AABB = struct {
+    pos: Vec2f,
+    size: Vec2f,
+
+    pub fn addv(this: @This(), vec2f: Vec2f) @This() {
+        return @This(){ .pos = this.pos + vec2f, .size = this.size };
+    }
+};
 const Anim = struct {
     time: usize = 0,
     currentOp: usize = 0,
@@ -49,6 +57,8 @@ const Anim = struct {
 
 // Components
 const Pos = Vec2f;
+/// Stores last position, for velocity
+const LastPos = Vec2f;
 const Control = struct {
     controller: enum { player },
     state: enum { stand, walk, jump, fall },
@@ -61,6 +71,7 @@ const Kinematic = struct { col: AABB };
 const Wire = struct { end: Vec2f, grabbed: ?enum { begin, end } = null };
 const Component = struct {
     pos: Pos,
+    lastpos: LastPos,
     control: Control,
     sprite: Sprite,
     staticAnim: StaticAnim,
@@ -96,30 +107,31 @@ const playerAnim = pac: {
 
 export fn start() void {
     _ = world.create(.{
-        .pos = .{ 76, 76 },
+        .pos = .{ 100, 80 },
+        .lastpos = .{ 100, 80 },
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
             .state = Anim{ .anim = &.{} },
         },
-        .kinematic = .{ .col = .{ .offset = .{ -2, -8 }, .size = .{ 4, 8 } } },
+        .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
     }) catch unreachable;
 
     for (assets.wire) |wire| {
-        w4.trace("begin {}, end {}", .{ wire[0], wire[1] });
+        // w4.trace("begin {}, end {}", .{ wire[0], wire[1] });
         const begin = Vec2f{ @intToFloat(f32, wire[0][0]), @intToFloat(f32, wire[0][1]) };
         const end = Vec2f{ @intToFloat(f32, wire[1][0]), @intToFloat(f32, wire[1][1]) };
-        w4.trace("{}, {}, begin {d:3.0}, end {d:3.0}", .{ wire[0], wire[1], begin, end });
+        // w4.trace("{}, {}, begin {d:3.0}, end {d:3.0}", .{ wire[0], wire[1], begin, end });
         const w = Wire{ .end = end };
-        const e = world.create(.{
+        _ = world.create(.{
             .pos = begin,
             .wire = w,
         }) catch {
             w4.trace("problem", .{});
             unreachable;
         };
-        w4.trace("{}", .{world.components.items(.wire)[e]});
+        // w4.trace("{}", .{world.components.items(.wire)[e]});
     }
 }
 
@@ -127,8 +139,9 @@ export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
-    world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
+    world.process(1, &.{ .pos, .lastpos }, velocityProcess);
     world.process(1, &.{ .pos, .control }, controlProcess);
+    world.process(1, &.{ .pos, .lastpos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
@@ -148,15 +161,8 @@ export fn update() void {
     }
 
     world.process(1, &.{ .pos, .wire }, wireProcess);
-    // for (assets.wire) |wire| {
-    //     w4.DRAW_COLORS.* = 0x0001;
-    //     w4.line(wire[0], wire[1]);
-    //     w4.DRAW_COLORS.* = 0x0031;
-    //     if (distance(wire[0], w4.MOUSE.pos()) < 8) w4.oval(wire[0] - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-    //     if (distance(wire[1], w4.MOUSE.pos()) < 8) w4.oval(wire[1] - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-    // }
-
     mouseLast = w4.MOUSE.buttons.left;
+    button_1_last = w4.GAMEPAD1.button_1;
 }
 
 fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
@@ -176,6 +182,9 @@ fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
     w4.line(begin, end);
     w4.DRAW_COLORS.* = 0x0031;
 
+    const drawdistance = 16;
+    const clickdistance = 3;
+
     if (wire.grabbed) |whichEnd| {
         switch (whichEnd) {
             .begin => pos.* = vec2tovec2f(w4.MOUSE.pos()),
@@ -183,13 +192,13 @@ fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
         }
         if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = null;
     } else {
-        if (distance(begin, w4.MOUSE.pos()) < 8) {
+        if (distance(begin, w4.MOUSE.pos()) < drawdistance) {
             w4.oval(begin - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-            if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .begin;
+            if (distance(begin, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .begin;
         }
-        if (distance(end, w4.MOUSE.pos()) < 8) {
+        if (distance(end, w4.MOUSE.pos()) < drawdistance) {
             w4.oval(end - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-            if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .end;
+            if (distance(end, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .end;
         }
     }
 }
@@ -221,23 +230,113 @@ fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Con
     anim.state.update(&sprite.index);
 }
 
+var button_1_last = false;
+
 fn controlProcess(_: f32, pos: *Pos, control: *Control) void {
     var delta = Vec2f{ 0, 0 };
-    if (w4.GAMEPAD1.button_up) delta[1] -= 1;
-    if (w4.GAMEPAD1.button_down) delta[1] += 1;
+    if (w4.GAMEPAD1.button_1 and !button_1_last) delta[1] -= 20;
     if (w4.GAMEPAD1.button_left) delta[0] -= 1;
     if (w4.GAMEPAD1.button_right) delta[0] += 1;
     if (delta[0] != 0 or delta[1] != 0) {
         control.state = .walk;
-        pos.* += delta;
+        var move = delta * @splat(2, @as(f32, 0.2));
+        pos.* += move;
+        if (delta[0] > 0) control.facing = .right;
+        if (delta[0] < 0) control.facing = .left;
     } else {
         control.state = .stand;
     }
 }
 
-fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
-    pos.* += Vec2f{ 0, 1 };
-    var topleft = pos.* + kinematic.col.offset;
-    var bottomright = topleft + kinematic.col.size;
-    if (bottomright[1] > 160) pos.*[1] = 160 - (kinematic.col.offset[1] + kinematic.col.size[1]);
+/// pos should be in tile coordinates, not world coordinates
+fn get_tile(x: i32, y: i32) ?u8 {
+    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
+    const i = x + y * 20;
+    return assets.solid[@intCast(u32, i)];
 }
+
+/// rect should be absolutely positioned. Add pos to kinematic.collider
+fn level_collide(rect: AABB) std.BoundedArray(AABB, 9) {
+    const tileSize = 8;
+    const top_left = rect.pos / @splat(2, @as(f32, tileSize));
+    const bot_right = (rect.pos + rect.size) / @splat(2, @as(f32, tileSize));
+    var collisions = std.BoundedArray(AABB, 9).init(0) catch unreachable;
+
+    var i: isize = @floatToInt(i32, top_left[0]);
+    while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
+        var a: isize = @floatToInt(i32, top_left[1]);
+        while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
+            var tile = get_tile(i, a);
+            if (tile == null or tile.? != 1) {
+                collisions.append(AABB{
+                    .pos = Vec2f{
+                        @intToFloat(f32, i * tileSize),
+                        @intToFloat(f32, a * tileSize),
+                    },
+                    .size = Vec2f{ tileSize, tileSize },
+                }) catch unreachable;
+            }
+        }
+    }
+
+    return collisions;
+}
+
+fn kinematicProcess(_: f32, pos: *Pos, lastpos: *LastPos, kinematic: *Kinematic) void {
+    var next = lastpos.*;
+    next[0] = pos.*[0];
+    var hcol = level_collide(kinematic.col.addv(next));
+    if (hcol.len > 0) {
+        next[0] = lastpos.*[0];
+    }
+
+    next[1] = pos.*[1];
+    var vcol = level_collide(kinematic.col.addv(next));
+    if (vcol.len > 0) {
+        next[1] = lastpos.*[1];
+    }
+
+    pos.* = next;
+}
+
+fn velocityProcess(_: f32, pos: *Pos, lastpos: *LastPos) void {
+    var vel = pos.* - lastpos.*;
+
+    vel *= @splat(2, @as(f32, 0.9));
+    vel += Vec2f{ 0, 0.25 };
+    vel = @minimum(Vec2f{ 8, 8 }, @maximum(Vec2f{ -8, -8 }, vel));
+
+    lastpos.* = pos.*;
+    pos.* += vel;
+}
+
+// fn gravityprocess(dt: f32, posptr: *comp.pos, gravityptr: *comp.gravity) void {
+//     _ = dt;
+//     posptr.*.cur = posptr.*.cur.add(gravityptr.*);
+// }
+
+// fn collisionprocess(_: f32, posptr: *comp.pos, kinematicptr: *comp.kinematic) void {
+//     const pos = posptr.*.cur;
+//     const old = posptr.*.old;
+//     const kinematic = kinematicptr.*;
+
+//     var next = vec.init(pos.x, old.y);
+//     var collisions = level_collide(kinematic.collider.addv(next));
+//     if (collisions.len > 0) {
+//         next.x = old.x;
+//         kinematicptr.*.onwall = true;
+//     } else {
+//         kinematicptr.*.onwall = false;
+//     }
+
+//     next.y = pos.y;
+//     collisions = level_collide(kinematic.collider.addv(next));
+//     if (collisions.len > 0) {
+//         next.y = old.y;
+//         kinematicptr.*.onground = true;
+//     } else {
+//         kinematicptr.*.onground = false;
+//     }
+
+//     posptr.*.cur = next;
+// }
