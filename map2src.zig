@@ -55,20 +55,35 @@ const KB = 1024;
 var heap: [64 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var alloc = fba.allocator();
+var verbose = true;
 
 pub fn main() anyerror!void {
-    const cwd = std.fs.cwd();
-    var output = try cwd.createFile("map.zig", .{});
-    defer output.close();
+    do() catch |e| switch (e) {
+        error.NoOutputName => showHelp("No output filename supplied"),
+        else => return e,
+    };
+}
 
+pub fn showHelp(msg: []const u8) void {
+    std.log.info("{s}\n map2src <output> input1...", .{msg});
+}
+
+pub fn do() !void {
     var argsIter = std.process.args();
+    const cwd = std.fs.cwd();
+
     const progName = (try argsIter.next(alloc)) orelse "";
     defer alloc.free(progName);
-    std.log.info("{s}", .{progName});
+    if (verbose) std.log.info("{s}", .{progName});
+
+    const outputName = (try argsIter.next(alloc)) orelse return error.NoOutputName;
+    defer alloc.free(outputName);
+    var output = try cwd.createFile(outputName, .{});
+    defer output.close();
 
     while (try argsIter.next(alloc)) |arg| {
         defer alloc.free(arg);
-        std.log.info("{s}", .{arg});
+        if (verbose) std.log.info("{s}", .{arg});
         var filebuffer: [64 * KB]u8 = undefined;
         var filecontents = try cwd.readFile(arg, &filebuffer);
 
@@ -107,7 +122,7 @@ pub fn main() anyerror!void {
                 },
             }
         }
-        std.log.info("{s}", .{outlist.items});
+        if (verbose) std.log.info("{s}", .{outlist.items});
         _ = try output.writeAll(outlist.items);
     }
 }

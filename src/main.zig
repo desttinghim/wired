@@ -69,6 +69,7 @@ const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
 const Kinematic = struct { col: AABB };
 const Wire = struct { end: Vec2f, grabbed: ?enum { begin, end } = null };
+const Gravity = Vec2f;
 const Component = struct {
     pos: Pos,
     lastpos: LastPos,
@@ -78,6 +79,7 @@ const Component = struct {
     controlAnim: ControlAnim,
     kinematic: Kinematic,
     wire: Wire,
+    gravity: Gravity,
 };
 const World = ecs.World(Component);
 
@@ -111,6 +113,7 @@ export fn start() void {
         .lastpos = .{ 100, 80 },
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
+        .gravity = Vec2f{ 0, 0.25 },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
             .state = Anim{ .anim = &.{} },
@@ -140,6 +143,7 @@ export fn update() void {
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
     world.process(1, &.{ .pos, .lastpos }, velocityProcess);
+    world.process(1, &.{ .pos, .gravity }, gravityProcess);
     world.process(1, &.{ .pos, .control }, controlProcess);
     world.process(1, &.{ .pos, .lastpos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
@@ -234,7 +238,7 @@ var button_1_last = false;
 
 fn controlProcess(_: f32, pos: *Pos, control: *Control) void {
     var delta = Vec2f{ 0, 0 };
-    if (w4.GAMEPAD1.button_1 and !button_1_last) delta[1] -= 20;
+    if (w4.GAMEPAD1.button_1 and !button_1_last) delta[1] -= 23;
     if (w4.GAMEPAD1.button_left) delta[0] -= 1;
     if (w4.GAMEPAD1.button_right) delta[0] += 1;
     if (delta[0] != 0 or delta[1] != 0) {
@@ -303,40 +307,14 @@ fn velocityProcess(_: f32, pos: *Pos, lastpos: *LastPos) void {
     var vel = pos.* - lastpos.*;
 
     vel *= @splat(2, @as(f32, 0.9));
-    vel += Vec2f{ 0, 0.25 };
+    // vel += Vec2f{ 0, 0.25 };
     vel = @minimum(Vec2f{ 8, 8 }, @maximum(Vec2f{ -8, -8 }, vel));
 
     lastpos.* = pos.*;
     pos.* += vel;
 }
 
-// fn gravityprocess(dt: f32, posptr: *comp.pos, gravityptr: *comp.gravity) void {
-//     _ = dt;
-//     posptr.*.cur = posptr.*.cur.add(gravityptr.*);
-// }
-
-// fn collisionprocess(_: f32, posptr: *comp.pos, kinematicptr: *comp.kinematic) void {
-//     const pos = posptr.*.cur;
-//     const old = posptr.*.old;
-//     const kinematic = kinematicptr.*;
-
-//     var next = vec.init(pos.x, old.y);
-//     var collisions = level_collide(kinematic.collider.addv(next));
-//     if (collisions.len > 0) {
-//         next.x = old.x;
-//         kinematicptr.*.onwall = true;
-//     } else {
-//         kinematicptr.*.onwall = false;
-//     }
-
-//     next.y = pos.y;
-//     collisions = level_collide(kinematic.collider.addv(next));
-//     if (collisions.len > 0) {
-//         next.y = old.y;
-//         kinematicptr.*.onground = true;
-//     } else {
-//         kinematicptr.*.onground = false;
-//     }
-
-//     posptr.*.cur = next;
-// }
+fn gravityProcess(dt: f32, pos: *Pos, gravity: *Gravity) void {
+    _ = dt;
+    pos.* = pos.* + gravity.*;
+}
