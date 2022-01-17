@@ -2,6 +2,7 @@ const std = @import("std");
 const w4 = @import("wasm4.zig");
 const ecs = @import("ecs.zig");
 const assets = @import("assets");
+const input = @import("input.zig");
 
 const Vec2 = std.meta.Vector(2, i32);
 const Vec2f = std.meta.Vector(2, f32);
@@ -67,7 +68,7 @@ const Control = struct {
 const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usize, flags: w4.BlitFlags };
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
-const Kinematic = struct { col: AABB };
+const Kinematic = struct { col: AABB, onWall: bool = false, onFloor: bool = false, onCeil: bool = false };
 const Wire = struct { end: Vec2f, grabbed: ?enum { begin, end } = null };
 const Gravity = Vec2f;
 const Component = struct {
@@ -122,10 +123,8 @@ export fn start() void {
     }) catch unreachable;
 
     for (assets.wire) |wire| {
-        // w4.trace("begin {}, end {}", .{ wire[0], wire[1] });
         const begin = Vec2f{ @intToFloat(f32, wire[0][0]), @intToFloat(f32, wire[0][1]) };
         const end = Vec2f{ @intToFloat(f32, wire[1][0]), @intToFloat(f32, wire[1][1]) };
-        // w4.trace("{}, {}, begin {d:3.0}, end {d:3.0}", .{ wire[0], wire[1], begin, end });
         const w = Wire{ .end = end };
         _ = world.create(.{
             .pos = begin,
@@ -134,7 +133,6 @@ export fn start() void {
             w4.trace("problem", .{});
             unreachable;
         };
-        // w4.trace("{}", .{world.components.items(.wire)[e]});
     }
 }
 
@@ -144,7 +142,7 @@ export fn update() void {
 
     world.process(1, &.{ .pos, .lastpos }, velocityProcess);
     world.process(1, &.{ .pos, .gravity }, gravityProcess);
-    world.process(1, &.{ .pos, .control }, controlProcess);
+    world.process(1, &.{ .pos, .control, .gravity, .kinematic }, controlProcess);
     world.process(1, &.{ .pos, .lastpos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
@@ -165,8 +163,7 @@ export fn update() void {
     }
 
     world.process(1, &.{ .pos, .wire }, wireProcess);
-    mouseLast = w4.MOUSE.buttons.left;
-    button_1_last = w4.GAMEPAD1.button_1;
+    input.update();
 }
 
 fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
@@ -181,7 +178,7 @@ var mouseLast = false;
 fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
     const begin = w4.Vec2{ @floatToInt(i32, pos.*[0]), @floatToInt(i32, pos.*[1]) };
     const end = w4.Vec2{ @floatToInt(i32, wire.end[0]), @floatToInt(i32, wire.end[1]) };
-    // if (w4.MOUSE.buttons.left and !mouseLast) w4.trace("pos {}, wire {}, begin {}, end {}", .{ pos.*, wire.end, begin, end });
+
     w4.DRAW_COLORS.* = 0x0001;
     w4.line(begin, end);
     w4.DRAW_COLORS.* = 0x0031;
@@ -234,22 +231,30 @@ fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Con
     anim.state.update(&sprite.index);
 }
 
-var button_1_last = false;
-
-fn controlProcess(_: f32, pos: *Pos, control: *Control) void {
+fn controlProcess(_: f32, pos: *Pos, control: *Control, gravity: *Gravity, kinematic: *Kinematic) void {
     var delta = Vec2f{ 0, 0 };
-    if (w4.GAMEPAD1.button_1 and !button_1_last) delta[1] -= 23;
-    if (w4.GAMEPAD1.button_left) delta[0] -= 1;
-    if (w4.GAMEPAD1.button_right) delta[0] += 1;
-    if (delta[0] != 0 or delta[1] != 0) {
-        control.state = .walk;
-        var move = delta * @splat(2, @as(f32, 0.2));
-        pos.* += move;
-        if (delta[0] > 0) control.facing = .right;
-        if (delta[0] < 0) control.facing = .left;
+    if (kinematic.onFloor) {
+        if (input.btnp(.one, .one)) delta[1] -= 23;
+        if (input.btn(.one, .left)) delta[0] -= 1;
+        if (input.btn(.one, .right)) delta[0] += 1;
+        if (delta[0] != 0 or delta[1] != 0) {
+            control.state = .walk;
+            if (delta[0] > 0) control.facing = .right;
+            if (delta[0] < 0) control.facing = .left;
+        } else {
+            control.state = .stand;
+        }
+    } else if (kinematic.onWall) {
+        if (input.btn(.one, .left) and input.btnp(.one, .one)) delta = Vec2f{ -1, -23 };
+        if (input.btn(.one, .right) and input.btnp(.one, .one)) delta = Vec2f{ 1, -23 };
+        gravity.* = Vec2f{ 0, 0.01 };
     } else {
-        control.state = .stand;
+        if (w4.GAMEPAD1.button_left) delta[0] -= 1;
+        if (w4.GAMEPAD1.button_right) delta[0] += 1;
+        gravity.* = Vec2f{ 0, 0.25 };
     }
+    var move = delta * @splat(2, @as(f32, 0.2));
+    pos.* += move;
 }
 
 /// pos should be in tile coordinates, not world coordinates
@@ -291,13 +296,21 @@ fn kinematicProcess(_: f32, pos: *Pos, lastpos: *LastPos, kinematic: *Kinematic)
     next[0] = pos.*[0];
     var hcol = level_collide(kinematic.col.addv(next));
     if (hcol.len > 0) {
+        kinematic.onWall = true;
         next[0] = lastpos.*[0];
+    } else {
+        kinematic.onWall = false;
     }
 
     next[1] = pos.*[1];
     var vcol = level_collide(kinematic.col.addv(next));
     if (vcol.len > 0) {
+        if (next[1] > lastpos.*[1]) kinematic.onFloor = true;
+        if (next[1] < lastpos.*[1]) kinematic.onCeil = true;
         next[1] = lastpos.*[1];
+    } else {
+        kinematic.onFloor = false;
+        kinematic.onCeil = false;
     }
 
     pos.* = next;

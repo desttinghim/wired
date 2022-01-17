@@ -131,6 +131,16 @@ pub const Gamepad = packed struct {
         if (@sizeOf(@This()) != @sizeOf(u8)) unreachable;
     }
 
+    pub fn diff(this: @This(), other: @This()) @This() {
+        return @bitCast(@This(), @bitCast(u8, this) ^ @bitCast(u8, other));
+    }
+
+    pub fn justPressed(this: @This(), last: @This()) @This() {
+        const thisbits = @bitCast(u8, this);
+        const lastbits = @bitCast(u8, last);
+        return @bitCast(@This(), (thisbits ^ lastbits) & thisbits);
+    }
+
     pub fn format(value: @This(), comptime _: []const u8, _: @import("std").fmt.FormatOptions, writer: anytype) !void {
         if (value.button_1) try writer.writeAll("1");
         if (value.button_2) try writer.writeAll("2");
@@ -158,6 +168,14 @@ pub const MouseButtons = packed struct {
     right: bool,
     middle: bool,
     _: u5 = 0,
+    pub fn diff(this: @This(), other: @This()) @This() {
+        return @bitCast(@This(), @bitCast(u8, this) ^ @bitCast(u8, other));
+    }
+    pub fn justPressed(this: @This(), last: @This()) @This() {
+        const thisbits = @bitCast(u8, this);
+        const lastbits = @bitCast(u8, last);
+        return @bitCast(@This(), (thisbits ^ lastbits) & thisbits);
+    }
     comptime {
         if (@sizeOf(@This()) != @sizeOf(u8)) unreachable;
     }
