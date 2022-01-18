@@ -57,30 +57,33 @@ const Anim = struct {
 };
 
 // Components
-const Pos = Vec2f;
-/// Stores last position, for velocity
-const LastPos = Vec2f;
+const Pos = struct {
+    pos: Vec2f,
+    last: Vec2f,
+    pub fn init(pos: Vec2f) @This() {
+        return @This(){ .pos = pos, .last = pos };
+    }
+};
 const Control = struct {
     controller: enum { player },
-    state: enum { stand, walk, jump, fall },
+    state: enum { stand, walk, jump, fall, wallSlide },
     facing: enum { left, right } = .right,
 };
 const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usize, flags: w4.BlitFlags };
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
-const Kinematic = struct { col: AABB, onWall: bool = false, onFloor: bool = false, onCeil: bool = false };
+const Kinematic = struct { col: AABB, move: Vec2f = Vec2f{ 0, 0 }, lastCol: Vec2f = Vec2f{ 0, 0 } };
 const Wire = struct { end: Vec2f, grabbed: ?enum { begin, end } = null };
-const Gravity = Vec2f;
+const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
     pos: Pos,
-    lastpos: LastPos,
     control: Control,
     sprite: Sprite,
     staticAnim: StaticAnim,
     controlAnim: ControlAnim,
     kinematic: Kinematic,
     wire: Wire,
-    gravity: Gravity,
+    physics: Physics,
 };
 const World = ecs.World(Component);
 
@@ -95,6 +98,7 @@ const anim_store = struct {
     const walk = Anim.simple(4, &[_]usize{ 1, 2, 3, 4 });
     const jump = Anim.frame(5);
     const fall = Anim.frame(6);
+    const wallSlide = Anim.frame(7);
 };
 
 const AnimData = []const Anim.Ops;
@@ -105,16 +109,16 @@ const playerAnim = pac: {
     animArr.append(&anim_store.walk) catch unreachable;
     animArr.append(&anim_store.jump) catch unreachable;
     animArr.append(&anim_store.fall) catch unreachable;
+    animArr.append(&anim_store.wallSlide) catch unreachable;
     break :pac animArr.slice();
 };
 
 export fn start() void {
     _ = world.create(.{
-        .pos = .{ 100, 80 },
-        .lastpos = .{ 100, 80 },
+        .pos = Pos.init(Vec2f{ 100, 80 }),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
-        .gravity = Vec2f{ 0, 0.25 },
+        .physics = .{ .friction = Vec2f{ 0.05, 0.01 }, .gravity = Vec2f{ 0, 0.25 } },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
             .state = Anim{ .anim = &.{} },
@@ -127,7 +131,7 @@ export fn start() void {
         const end = Vec2f{ @intToFloat(f32, wire[1][0]), @intToFloat(f32, wire[1][1]) };
         const w = Wire{ .end = end };
         _ = world.create(.{
-            .pos = begin,
+            .pos = Pos.init(begin),
             .wire = w,
         }) catch {
             w4.trace("problem", .{});
@@ -140,10 +144,10 @@ export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
-    world.process(1, &.{ .pos, .lastpos }, velocityProcess);
-    world.process(1, &.{ .pos, .gravity }, gravityProcess);
-    world.process(1, &.{ .pos, .control, .gravity, .kinematic }, controlProcess);
-    world.process(1, &.{ .pos, .lastpos, .kinematic }, kinematicProcess);
+    world.process(1, &.{.pos}, velocityProcess);
+    world.process(1, &.{ .pos, .physics }, physicsProcess);
+    world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
+    world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
@@ -176,8 +180,8 @@ fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
 var mouseLast = false;
 
 fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
-    const begin = w4.Vec2{ @floatToInt(i32, pos.*[0]), @floatToInt(i32, pos.*[1]) };
-    const end = w4.Vec2{ @floatToInt(i32, wire.end[0]), @floatToInt(i32, wire.end[1]) };
+    const begin = vec2ftovec2(pos.pos);
+    const end = vec2ftovec2(wire.end);
 
     w4.DRAW_COLORS.* = 0x0001;
     w4.line(begin, end);
@@ -188,7 +192,7 @@ fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
 
     if (wire.grabbed) |whichEnd| {
         switch (whichEnd) {
-            .begin => pos.* = vec2tovec2f(w4.MOUSE.pos()),
+            .begin => pos.pos = vec2tovec2f(w4.MOUSE.pos()),
             .end => wire.end = vec2tovec2f(w4.MOUSE.pos()),
         }
         if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = null;
@@ -209,12 +213,12 @@ fn vec2tovec2f(vec2: w4.Vec2) Vec2f {
 }
 
 fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
-    return w4.Vec2{ @floatToInt(i32, vec2f[0]), @intToFloat(i32, vec2f[1]) };
+    return w4.Vec2{ @floatToInt(i32, vec2f[0]), @floatToInt(i32, vec2f[1]) };
 }
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
     w4.DRAW_COLORS.* = 0x0010;
-    const fpos = pos.* + sprite.offset;
+    const fpos = pos.pos + sprite.offset;
     const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) };
     const t = w4.Vec2{ @intCast(i32, (sprite.index * 8) % 128), @intCast(i32, (sprite.index * 8) / 128) };
     w4.blitSub(&assets.sprites, ipos, sprite.size, t, 128, sprite.flags);
@@ -225,36 +229,47 @@ fn staticAnimProcess(_: f32, sprite: *Sprite, anim: *StaticAnim) void {
 }
 
 fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Control) void {
-    const a: usize = if (control.state == .stand) 0 else 1;
+    const a: usize = switch (control.state) {
+        .stand => 0,
+        .walk => 1,
+        .jump => 2,
+        .fall => 3,
+        .wallSlide => 4,
+    };
     sprite.flags.flip_x = (control.facing == .left);
     anim.state.play(anim.anims[a]);
     anim.state.update(&sprite.index);
 }
 
-fn controlProcess(_: f32, pos: *Pos, control: *Control, gravity: *Gravity, kinematic: *Kinematic) void {
+const approxEqAbs = std.math.approxEqAbs;
+
+fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinematic: *Kinematic) void {
     var delta = Vec2f{ 0, 0 };
-    if (kinematic.onFloor) {
+    if (approxEqAbs(f32, kinematic.move[1], 0, 0.01) and kinematic.lastCol[1] > 0) {
         if (input.btnp(.one, .one)) delta[1] -= 23;
         if (input.btn(.one, .left)) delta[0] -= 1;
         if (input.btn(.one, .right)) delta[0] += 1;
         if (delta[0] != 0 or delta[1] != 0) {
             control.state = .walk;
-            if (delta[0] > 0) control.facing = .right;
-            if (delta[0] < 0) control.facing = .left;
         } else {
             control.state = .stand;
         }
-    } else if (kinematic.onWall) {
-        if (input.btn(.one, .left) and input.btnp(.one, .one)) delta = Vec2f{ -1, -23 };
-        if (input.btn(.one, .right) and input.btnp(.one, .one)) delta = Vec2f{ 1, -23 };
-        gravity.* = Vec2f{ 0, 0.01 };
+    } else if (kinematic.move[1] > 0 and !approxEqAbs(f32, kinematic.lastCol[0], 0, 0.01) and approxEqAbs(f32, kinematic.lastCol[1], 0, 0.01)) {
+        // w4.trace("{}, {}", .{ kinematic.move, kinematic.lastCol });
+        if (kinematic.lastCol[0] > 0 and input.btnp(.one, .one)) delta = Vec2f{ -10, -15 };
+        if (kinematic.lastCol[0] < 0 and input.btnp(.one, .one)) delta = Vec2f{ 10, -15 };
+        physics.gravity = Vec2f{ 0, 0.05 };
+        control.state = .wallSlide;
     } else {
-        if (w4.GAMEPAD1.button_left) delta[0] -= 1;
-        if (w4.GAMEPAD1.button_right) delta[0] += 1;
-        gravity.* = Vec2f{ 0, 0.25 };
+        if (input.btn(.one, .left)) delta[0] -= 1;
+        if (input.btn(.one, .right)) delta[0] += 1;
+        physics.gravity = Vec2f{ 0, 0.25 };
+        if (kinematic.move[1] < 0) control.state = .jump else control.state = .fall;
     }
+    if (delta[0] > 0) control.facing = .right;
+    if (delta[0] < 0) control.facing = .left;
     var move = delta * @splat(2, @as(f32, 0.2));
-    pos.* += move;
+    pos.pos += move;
 }
 
 /// pos should be in tile coordinates, not world coordinates
@@ -291,43 +306,50 @@ fn level_collide(rect: AABB) std.BoundedArray(AABB, 9) {
     return collisions;
 }
 
-fn kinematicProcess(_: f32, pos: *Pos, lastpos: *LastPos, kinematic: *Kinematic) void {
-    var next = lastpos.*;
-    next[0] = pos.*[0];
+fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
+    var next = pos.last;
+    next[0] = pos.pos[0];
     var hcol = level_collide(kinematic.col.addv(next));
     if (hcol.len > 0) {
-        kinematic.onWall = true;
-        next[0] = lastpos.*[0];
-    } else {
-        kinematic.onWall = false;
+        kinematic.lastCol[0] = next[0] - pos.last[0];
+        next[0] = pos.last[0];
+    } else if (!approxEqAbs(f32, next[0] - pos.last[0], 0, 0.01)) {
+        kinematic.lastCol[0] = 0;
     }
 
-    next[1] = pos.*[1];
+    next[1] = pos.pos[1];
     var vcol = level_collide(kinematic.col.addv(next));
     if (vcol.len > 0) {
-        if (next[1] > lastpos.*[1]) kinematic.onFloor = true;
-        if (next[1] < lastpos.*[1]) kinematic.onCeil = true;
-        next[1] = lastpos.*[1];
-    } else {
-        kinematic.onFloor = false;
-        kinematic.onCeil = false;
+        kinematic.lastCol[1] = next[1] - pos.last[1];
+        next[1] = pos.last[1];
+    } else if (!approxEqAbs(f32, next[1] - pos.last[1], 0, 0.01)) {
+        kinematic.lastCol[1] = 0;
     }
 
-    pos.* = next;
+    var colPosAbs = next + kinematic.lastCol;
+    var lastCol = level_collide(kinematic.col.addv(colPosAbs));
+    if (lastCol.len == 0) {
+        kinematic.lastCol = Vec2f{ 0, 0 };
+    }
+
+    kinematic.move = next - pos.last;
+
+    pos.pos = next;
 }
 
-fn velocityProcess(_: f32, pos: *Pos, lastpos: *LastPos) void {
-    var vel = pos.* - lastpos.*;
+fn velocityProcess(_: f32, pos: *Pos) void {
+    var vel = pos.pos - pos.last;
 
     vel *= @splat(2, @as(f32, 0.9));
-    // vel += Vec2f{ 0, 0.25 };
     vel = @minimum(Vec2f{ 8, 8 }, @maximum(Vec2f{ -8, -8 }, vel));
 
-    lastpos.* = pos.*;
-    pos.* += vel;
+    pos.last = pos.pos;
+    pos.pos += vel;
 }
 
-fn gravityProcess(dt: f32, pos: *Pos, gravity: *Gravity) void {
+fn physicsProcess(dt: f32, pos: *Pos, physics: *Physics) void {
     _ = dt;
-    pos.* = pos.* + gravity.*;
+    var friction = @splat(2, @as(f32, 1)) - physics.friction;
+    pos.pos = pos.last + (pos.pos - pos.last) * friction;
+    pos.pos += physics.gravity;
 }
