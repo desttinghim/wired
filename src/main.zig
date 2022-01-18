@@ -73,7 +73,27 @@ const Control = struct {
 const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usize, flags: w4.BlitFlags };
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
-const Kinematic = struct { col: AABB, move: Vec2f = Vec2f{ 0, 0 }, lastCol: Vec2f = Vec2f{ 0, 0 } };
+const Kinematic = struct {
+    col: AABB,
+    move: Vec2f = Vec2f{ 0, 0 },
+    lastCol: Vec2f = Vec2f{ 0, 0 },
+
+    pub fn inAir(this: @This()) bool {
+        return approxEqAbs(f32, this.lastCol[1], 0, 0.01);
+    }
+
+    pub fn onFloor(this: @This()) bool {
+        return approxEqAbs(f32, this.move[1], 0, 0.01) and this.lastCol[1] > 0;
+    }
+
+    pub fn isFalling(this: @This()) bool {
+        return this.move[1] > 0 and approxEqAbs(f32, this.lastCol[1], 0, 0.01);
+    }
+
+    pub fn onWall(this: @This()) bool {
+        return this.isFalling() and !approxEqAbs(f32, this.lastCol[0], 0, 0.01);
+    }
+};
 const Wire = struct { nodes: std.BoundedArray(Pos, 32), anchored: [2]?union(enum) { stationary, grabbed: u32 } = null };
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
@@ -153,6 +173,7 @@ export fn start() void {
 }
 
 var indicator: ?Vec2 = null;
+var time: usize = 0;
 
 export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
@@ -185,11 +206,17 @@ export fn update() void {
     world.process(1, &.{.wire}, wireDrawProcess);
 
     if (indicator) |pos| {
+        if (@divTrunc((time % 60), 30) == 0)
+            w4.DRAW_COLORS.* = 0x0031
+        else
+            w4.DRAW_COLORS.* = 0x0030;
+
         w4.oval(pos - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
     }
 
     indicator = null;
     input.update();
+    time += 1;
 }
 
 fn is_plug(tile: u8) bool {
@@ -305,9 +332,15 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
             .stationary => nodes[0].pos = nodes[0].last,
             .grabbed => |grabbedBy| {
                 var entity = world.get(grabbedBy);
+                // if (entity.kinematic) |kinematic| {
+                //     if (kinematic.inAir()) {
+                //         constrainNodes(&entity.pos.?, &nodes[0]);
+                //         world.set(grabbedBy, entity);
+                //         break :anchor;
+                //     }
+                // }
                 // TODO: stop player from pulling the wire through terrain
                 // constrainNodes(&entity.pos.?, &nodes[0]);
-                // world.set(grabbedBy, entity);
                 nodes[0].pos = entity.pos.?.pos + Vec2f{ 0, -6 };
             },
         }
@@ -317,15 +350,23 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
             .stationary => nodes[nodes.len - 1].pos = nodes[nodes.len - 1].last,
             .grabbed => |grabbedBy| {
                 var entity = world.get(grabbedBy);
+                // if (entity.kinematic) |kinematic| {
+                //     if (kinematic.inAir()) {
+                //         constrainNodes(&entity.pos.?, &nodes[nodes.len - 1]);
+                //         world.set(grabbedBy, entity);
+                //         break :anchor;
+                //     }
+                // }
                 // TODO: stop player from pulling the wire through terrain
                 // constrainNodes(&entity.pos.?, &nodes[nodes.len - 1]);
-                // world.set(grabbedBy, entity);
                 nodes[nodes.len - 1].pos = entity.pos.?.pos + Vec2f{ 0, -6 };
             },
         }
     }
 
     if (wire.anchored[0] != null and wire.anchored[1] != null) {
+        // const a1 = wire.anchored[0].?;
+        // const a2 = wire.anchored[1].?;
         var i: usize = 0;
         var left: usize = 1;
         var right: usize = nodes.len - 2;
@@ -337,6 +378,8 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
                 } else {
                     constrainNodes(&nodes[left - 1], &nodes[left]);
                 }
+                // collideNode(&nodes[left - 1]);
+                // collideNode(&nodes[left]);
                 left += 1;
             } else {
                 // Right side
@@ -345,27 +388,52 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
                 } else {
                     constrainNodes(&nodes[right + 1], &nodes[right]);
                 }
+                // collideNode(&nodes[right + 1]);
+                // collideNode(&nodes[right]);
                 right -= 1;
             }
         }
     } else if (wire.anchored[0] != null and wire.anchored[1] == null) {
+        // const a1 = wire.anchored[0].?;
         var left: usize = 1;
+        constrainToAnchor(&nodes[left - 1], &nodes[left]);
+        left += 1;
         while (left < nodes.len) : (left += 1) {
             // Left side
-            if (left == 1) {
-                constrainToAnchor(&nodes[left - 1], &nodes[left]);
-            } else {
-                constrainNodes(&nodes[left - 1], &nodes[left]);
-            }
+            constrainNodes(&nodes[left - 1], &nodes[left]);
+            // collideNode(&nodes[left - 1]);
+            // collideNode(&nodes[left]);
         }
     } else if (wire.anchored[0] == null and wire.anchored[1] != null) {
+        // const a2 = wire.anchored[0].?;
         var right: usize = nodes.len - 2;
-        while (right > 1) : (right -= 1) {
+        constrainToAnchor(&nodes[right + 1], &nodes[right]);
+        right -= 1;
+        while (right >= 0) : (right -= 1) {
             // Right side
-            if (right == 1) {
-                constrainToAnchor(&nodes[right + 1], &nodes[right]);
+            constrainNodes(&nodes[right + 1], &nodes[right]);
+            // collideNode(&nodes[right + 1]);
+            // collideNode(&nodes[right]);
+            if (right == 0) break;
+        }
+    } else {
+        // No anchors
+        var i: usize = 0;
+        var left: usize = 1;
+        var right: usize = nodes.len - 2;
+        while (i < nodes.len) : (i += 1) {
+            if (i % 2 == 0) {
+                // Left side
+                constrainNodes(&nodes[left - 1], &nodes[left]);
+                // collideNode(&nodes[left - 1]);
+                // collideNode(&nodes[left]);
+                left += 1;
             } else {
+                // Right side
                 constrainNodes(&nodes[right + 1], &nodes[right]);
+                // collideNode(&nodes[right + 1]);
+                // collideNode(&nodes[right]);
+                right -= 1;
             }
         }
     }
@@ -397,7 +465,7 @@ const wireSegmentMaxLengthV = @splat(2, @as(f32, wireSegmentMaxLength));
 fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
     var diff = anchor.pos - node.pos;
     var dist = distancef(node.pos, anchor.pos);
-    var wireLength = @maximum(wireSegmentMinLength, dist);
+    var wireLength = @maximum(wireSegmentMaxLength, dist);
     node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, wireLength)));
 }
 
