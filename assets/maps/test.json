@@ -21,7 +21,7 @@
          "name":"conduit",
          "opacity":1,
          "type":"tilelayer",
-         "visible":false,
+         "visible":true,
          "width":20,
          "x":0,
          "y":0
@@ -61,8 +61,14 @@
                          "y":0
                         }, 
                         {
-                         "x":50.5,
-                         "y":10.875
+                         "x":55.5909090909091,
+                         "y":0.147727272727273
+                        }],
+                 "properties":[
+                        {
+                         "name":"anchor2",
+                         "type":"bool",
+                         "value":false
                         }],
                  "rotation":0,
                  "type":"wire",

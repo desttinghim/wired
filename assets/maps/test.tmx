@@ -28,7 +28,7 @@
 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 </data>
  </layer>
- <layer id="2" name="conduit" width="20" height="20" visible="0">
+ <layer id="2" name="conduit" width="20" height="20">
   <data encoding="csv">
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -57,7 +57,10 @@
    <polyline points="0,0 56,0"/>
   </object>
   <object id="6" type="wire" x="84.125" y="19.875">
-   <polyline points="0,0 50.5,10.875"/>
+   <properties>
+    <property name="anchor2" type="bool" value="false"/>
+   </properties>
+   <polyline points="0,0 55.5909,0.147727"/>
   </object>
  </objectgroup>
 </map>

@@ -1,5 +1,12 @@
 const std = @import("std");
 
+const PropertyType = enum { @"bool" };
+const Property = struct {
+    name: []const u8 = &.{},
+    @"type": PropertyType = .@"bool",
+    value: union(PropertyType) { @"bool": bool },
+};
+
 const Point = struct {
     x: f64 = 0,
     y: f64 = 0,
@@ -10,8 +17,9 @@ const Object = struct {
     id: u64 = 0,
     name: []const u8,
     polyline: []Point,
+    properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": []const u8 = "",
+    @"type": enum { wire },
     visible: bool = true,
     width: u64 = 0,
     x: f64 = 0,
@@ -98,6 +106,7 @@ pub fn do() !void {
 
         try outlist.appendSlice("const std = @import(\"std\");\n");
         try outlist.appendSlice("const Vec2 = std.meta.Vector(2,i32);\n");
+        try outlist.appendSlice("const Wire = struct { p1: Vec2, p2: Vec2, a1: bool, a2: bool };\n");
 
         var outbuffer: [4 * KB]u8 = undefined;
         for (map.layers) |layer| {
@@ -107,13 +116,21 @@ pub fn do() !void {
                     _ = try outlist.appendSlice(outcontent);
                 },
                 .objectgroup => {
-                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}][2]Vec2 = [_][2]Vec2{{", .{ layer.name, layer.objects.len });
+                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}]Wire = [_]Wire{{", .{ layer.name, layer.objects.len });
                     try outlist.appendSlice(outcontent);
 
                     for (layer.objects) |obj| {
                         try outlist.appendSlice(".{");
-                        for (obj.polyline) |point| {
-                            var pointf = try std.fmt.bufPrint(&outbuffer, ".{{ {}, {} }},", .{ @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
+                        var a1 = true;
+                        var a2 = true;
+                        for (obj.properties) |p| {
+                            if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.@"bool";
+                            if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.@"bool";
+                        }
+                        var of = try std.fmt.bufPrint(&outbuffer, ".a1 = {}, .a2 = {},", .{ a1, a2 });
+                        try outlist.appendSlice(of);
+                        for (obj.polyline) |point, i| {
+                            var pointf = try std.fmt.bufPrint(&outbuffer, ".p{} = Vec2{{ {}, {} }},", .{ i + 1, @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
                             try outlist.appendSlice(pointf);
                         }
                         try outlist.appendSlice("}, ");

@@ -132,8 +132,8 @@ export fn start() void {
     }) catch showErr("Creating player");
 
     for (assets.wire) |wire| {
-        const begin = Vec2f{ @intToFloat(f32, wire[0][0]), @intToFloat(f32, wire[0][1]) };
-        const end = Vec2f{ @intToFloat(f32, wire[1][0]), @intToFloat(f32, wire[1][1]) };
+        const begin = vec2tovec2f(wire.p1);
+        const end = vec2tovec2f(wire.p2);
         const size = end - begin;
 
         var nodes = std.BoundedArray(Pos, 10).init(0) catch showErr("Nodes");
@@ -142,7 +142,7 @@ export fn start() void {
             const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @as(f32, 5));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
         }
-        const w = Wire{ .nodes = nodes, .anchored = .{ .stationary, null } };
+        const w = Wire{ .nodes = nodes, .anchored = .{ if (wire.a1) .stationary else null, if (wire.a2) .stationary else null } };
         _ = world.create(.{
             .wire = w,
         }) catch showErr("Adding wire entity");
