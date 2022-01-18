@@ -142,7 +142,7 @@ export fn start() void {
             const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @as(f32, 5));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
         }
-        const w = Wire{ .nodes = nodes, .anchored = .{ .stationary, .stationary } };
+        const w = Wire{ .nodes = nodes, .anchored = .{ .stationary, null } };
         _ = world.create(.{
             .wire = w,
         }) catch showErr("Adding wire entity");
@@ -199,19 +199,6 @@ fn is_solid(pos: Vec2) bool {
     return true;
 }
 
-// -- Returns distance to map cell
-// function tilemap_distance_to(a, m)
-//   local dx, dy = 0, 0
-//   local mx, my, mw, mh = m.x * 8, m.y * 8, 8, 8
-//   if a.x < mx then dx = mx - (a.x + a.w)
-//   elseif a.x > mx then dx = a.x - (mx + mw)
-//   end
-//   if a.y < my then dy = my - (a.y + a.h)
-//   elseif a.y > my then dy = a.y - (my + mh)
-//   end
-//   return dx, dy
-// end
-
 fn length(vec: Vec2f) f32 {
     var squared = vec * vec;
     return @sqrt(@reduce(.Add, squared));
@@ -225,46 +212,97 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
 
-    for (nodes) |*node, i| {
+    for (nodes) |*node| {
         var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.05, 0.05 } };
         velocityProcess(dt, node);
         physicsProcess(dt, node, &physics);
-
-        const tileSize = Vec2{ 8, 8 };
-        const tileSizef = vec2tovec2f(tileSize);
-        const iPos = vec2ftovec2(node.pos);
-        const mapPos = @divTrunc(iPos, tileSize);
-        if (is_solid(mapPos)) {
-            // w4.DRAW_COLORS.* = 0x0011;
-            // w4.rect(mapPos * tileSize, tileSize);
-            const velNorm = normalize(node.pos - node.last);
-            var collideVec = node.last;
-            while (!is_solid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
-                collideVec += velNorm;
-            }
-            node.pos = collideVec;
-        }
-
-        if (i > 0) {
-            var nodeBefore = nodes[i - 1];
-            var diff = nodeBefore.pos - node.pos;
-            var dist = distancef(node.pos, nodeBefore.pos);
-            var difference: f32 = 0;
-            if (dist > 0) {
-                difference = (8 - dist) / dist;
-            }
-            var translate = diff * @splat(2, 0.5 * difference);
-            nodeBefore.pos += translate;
-            node.pos -= translate;
-        }
-
-        if (i == 0 and wire.anchored[0] != null) {
-            node.pos = node.last;
-        }
-        // if (i == nodes.len - 1 and wire.anchored[1] != null) {
-        //     node.pos = node.last;
-        // }
+        collideNode(node);
     }
+
+    if (wire.anchored[0] != null) nodes[0].pos = nodes[0].last;
+    if (wire.anchored[1] != null) nodes[nodes.len - 1].pos = nodes[nodes.len - 1].last;
+
+    if (wire.anchored[0] != null and wire.anchored[1] != null) {
+        var i: usize = 0;
+        var left: usize = 1;
+        var right: usize = nodes.len - 2;
+        while (i < nodes.len) : (i += 1) {
+            if (i % 2 == 0) {
+                // Left side
+                if (left == 1) {
+                    constrainToAnchor(&nodes[left - 1], &nodes[left]);
+                } else {
+                    constrainNodes(&nodes[left - 1], &nodes[left]);
+                }
+                left += 1;
+            } else {
+                // Right side
+                if (right == nodes.len - 2) {
+                    constrainToAnchor(&nodes[right + 1], &nodes[right]);
+                } else {
+                    constrainNodes(&nodes[right + 1], &nodes[right]);
+                }
+                right -= 1;
+            }
+        }
+    } else if (wire.anchored[0] != null and wire.anchored[1] == null) {
+        var left: usize = 1;
+        while (left < nodes.len) : (left += 1) {
+            // Left side
+            if (left == 1) {
+                constrainToAnchor(&nodes[left - 1], &nodes[left]);
+            } else {
+                constrainNodes(&nodes[left - 1], &nodes[left]);
+            }
+        }
+    } else if (wire.anchored[0] == null and wire.anchored[1] != null) {
+        var right: usize = nodes.len - 2;
+        while (right > 1) : (right -= 1) {
+            // Right side
+            if (right == 1) {
+                constrainToAnchor(&nodes[right + 1], &nodes[right]);
+            } else {
+                constrainNodes(&nodes[right + 1], &nodes[right]);
+            }
+        }
+    }
+}
+
+fn collideNode(node: *Pos) void {
+    const tileSize = Vec2{ 8, 8 };
+    const tileSizef = vec2tovec2f(tileSize);
+    const iPos = vec2ftovec2(node.pos);
+    const mapPos = @divTrunc(iPos, tileSize);
+    if (is_solid(mapPos)) {
+        // w4.DRAW_COLORS.* = 0x0011;
+        // w4.rect(mapPos * tileSize, tileSize);
+        const velNorm = normalize(node.pos - node.last);
+        var collideVec = node.last;
+        while (!is_solid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
+            collideVec += velNorm;
+        }
+        node.pos = collideVec;
+    }
+}
+
+fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
+    var diff = anchor.pos - node.pos;
+    var dist = distancef(node.pos, anchor.pos);
+    if (dist > 8) {
+        node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, 8)));
+    }
+}
+
+fn constrainNodes(prevNode: *Pos, node: *Pos) void {
+    var diff = prevNode.pos - node.pos;
+    var dist = distancef(node.pos, prevNode.pos);
+    var difference: f32 = 0;
+    if (dist > 0) {
+        difference = (8 - dist) / dist;
+    }
+    var translate = diff * @splat(2, 0.5 * difference);
+    prevNode.pos += translate;
+    node.pos -= translate;
 }
 
 fn wireDrawProcess(_: f32, wire: *Wire) void {
