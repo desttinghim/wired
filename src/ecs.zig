@@ -53,17 +53,17 @@ pub fn World(comptime ComponentBase: type) type {
                 return this;
             }
 
-            pub fn require(set: []const ComponentEnum) @This() {
+            pub fn require(require_set: []const ComponentEnum) @This() {
                 var this = @This(){};
-                for (set) |f| {
+                for (require_set) |f| {
                     this.required.insert(f);
                 }
                 return this;
             }
 
-            pub fn exclude(set: []const ComponentEnum) @This() {
+            pub fn exclude(exclude_set: []const ComponentEnum) @This() {
                 var this = @This(){};
-                for (set) |f| {
+                for (exclude_set) |f| {
                     this.excluded.insert(f);
                 }
                 return this;
@@ -92,8 +92,13 @@ pub fn World(comptime ComponentBase: type) type {
             @compileError("unimplemented");
         }
 
-        pub fn get(this: *@This(), entity: usize, comptime component: ComponentEnum) *Component {
-            return this.components.items(component)[entity];
+        /// Returns a copy of the components on an entity
+        pub fn get(this: *@This(), entity: usize) Component {
+            return this.components.get(entity);
+        }
+
+        pub fn set(this: *@This(), entity: usize, component: Component) void {
+            this.components.set(entity, component);
         }
 
         fn enum2type(comptime enumList: []const ComponentEnum) []type {
@@ -108,13 +113,31 @@ pub fn World(comptime ComponentBase: type) type {
         pub fn process(this: *@This(), dt: f32, comptime comp: []const ComponentEnum, func: anytype) void {
             const Args = Tuple([_]type{f32} ++ enum2type(comp));
             var i = this.iter(Query.require(comp));
-            while (i.next()) |e| {
+            while (i.next()) |eID| {
+                var e = this.get(eID);
                 var args: Args = undefined;
                 args[0] = dt;
                 inline for (comp) |f, j| {
                     args[j + 1] = &(@field(e, @tagName(f)).?);
                 }
                 @call(.{}, func, args);
+                this.set(eID, e);
+            }
+        }
+
+        pub fn processWithID(this: *@This(), dt: f32, comptime comp: []const ComponentEnum, func: anytype) void {
+            const Args = Tuple([_]type{ f32, usize } ++ enum2type(comp));
+            var i = this.iter(Query.require(comp));
+            while (i.next()) |eID| {
+                var e = this.get(eID);
+                var args: Args = undefined;
+                args[0] = dt;
+                args[1] = eID;
+                inline for (comp) |f, j| {
+                    args[j + 2] = &(@field(e, @tagName(f)).?);
+                }
+                @call(.{}, func, args);
+                this.set(eID, e);
             }
         }
 
@@ -129,40 +152,41 @@ pub fn World(comptime ComponentBase: type) type {
         const Self = @This();
         const Iterator = struct {
             world: *Self,
-            lastComponent: ?Component,
+            // lastIndex: ?usize,
             index: usize,
             query: ComponentQuery,
 
             pub fn init(w: *Self, q: ComponentQuery) @This() {
                 return @This(){
                     .world = w,
-                    .lastComponent = null,
+                    // .lastComponent = null,
                     .index = 0,
                     .query = q,
                 };
             }
 
-            pub fn next(this: *@This()) ?*Component {
-                if (this.lastComponent) |e| this.world.components.set(this.index - 1, e);
+            pub fn next(this: *@This()) ?usize {
+                // if (this.lastIndex) |_| this.index += 1;
                 if (this.index == this.world.components.len) return null;
                 var match = false;
                 while (!match) {
                     if (this.index == this.world.components.len) return null;
-                    this.lastComponent = this.world.components.get(this.index);
+                    const e = this.world.components.get(this.index);
                     match = true;
                     inline for (fields) |f| {
                         const fenum = std.meta.stringToEnum(ComponentEnum, f.name) orelse unreachable;
                         const required = this.query.required.contains(fenum);
                         const excluded = this.query.excluded.contains(fenum);
-                        const has = @field(this.lastComponent.?, f.name) != null;
+                        const has = @field(e, f.name) != null;
                         if ((required and !has) or (excluded and has)) {
                             match = false;
                             break;
                         }
                     }
                     this.index += 1;
+                    if (match) return this.index - 1;
                 }
-                return &this.lastComponent.?;
+                return null;
             }
         };
     };

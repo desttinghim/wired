@@ -68,12 +68,13 @@ const Control = struct {
     controller: enum { player },
     state: enum { stand, walk, jump, fall, wallSlide },
     facing: enum { left, right } = .right,
+    grabbing: ?struct { id: usize, which: usize } = null,
 };
 const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usize, flags: w4.BlitFlags };
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
 const Kinematic = struct { col: AABB, move: Vec2f = Vec2f{ 0, 0 }, lastCol: Vec2f = Vec2f{ 0, 0 } };
-const Wire = struct { nodes: std.BoundedArray(Pos, 10), anchored: [2]?enum { stationary, grabbed } = null };
+const Wire = struct { nodes: std.BoundedArray(Pos, 32), anchored: [2]?union(enum) { stationary, grabbed: u32 } = null };
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
     pos: Pos,
@@ -136,10 +137,12 @@ export fn start() void {
         const end = vec2tovec2f(wire.p2);
         const size = end - begin;
 
-        var nodes = std.BoundedArray(Pos, 10).init(0) catch showErr("Nodes");
+        var nodes = std.BoundedArray(Pos, 32).init(0) catch showErr("Nodes");
         var i: usize = 0;
-        while (i <= 5) : (i += 1) {
-            const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @as(f32, 5));
+        const divisions = @floatToInt(usize, length(size) / wireSegmentMaxLength);
+        w4.trace("{d:.0} long, {} divisions", .{ length(size), divisions });
+        while (i <= divisions) : (i += 1) {
+            const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, divisions));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
         }
         const w = Wire{ .nodes = nodes, .anchored = .{ if (wire.a1) .stationary else null, if (wire.a2) .stationary else null } };
@@ -149,12 +152,15 @@ export fn start() void {
     }
 }
 
+var indicator: ?Vec2 = null;
+
 export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);
+    world.processWithID(1, &.{ .pos, .control }, wireManipulationProcess);
     world.process(1, &.{.wire}, wirePhysicsProcess);
     world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
     world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
@@ -177,7 +183,82 @@ export fn update() void {
     }
 
     world.process(1, &.{.wire}, wireDrawProcess);
+
+    if (indicator) |pos| {
+        w4.oval(pos - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
+    }
+
+    indicator = null;
     input.update();
+}
+
+fn is_plug(tile: u8) bool {
+    return tile == 176 or tile == 177 or tile == 178 or tile == 179 or tile == 146;
+}
+
+/// pos should be in tile coordinates, not world coordinates
+fn get_conduit(vec: Vec2) ?u8 {
+    const x = vec[0];
+    const y = vec[1];
+    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
+    const i = x + y * 20;
+    return assets.conduit[@intCast(u32, i)];
+}
+
+fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void {
+    if (control.grabbing) |details| {
+        var offset = if (control.facing == .left) Vec2f{ -6, -4 } else Vec2f{ 6, -4 };
+        var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
+        if (is_plug(get_conduit(mapPos) orelse 0)) {
+            indicator = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 };
+            if (input.btnp(.one, .two)) {
+                var e = world.get(details.id);
+                e.wire.?.anchored[details.which] = .stationary;
+                e.wire.?.nodes.slice()[e.wire.?.nodes.len - 1].pos = vec2tovec2f(indicator.?);
+                world.set(details.id, e);
+                control.grabbing = null;
+            }
+        } else if (input.btnp(.one, .two)) {
+            var e = world.get(details.id);
+            e.wire.?.anchored[details.which] = null;
+            world.set(details.id, e);
+            control.grabbing = null;
+        }
+    } else {
+        const interactDistance = 8;
+        var minDistance: f32 = interactDistance;
+        var wireIter = world.iter(World.Query.require(&.{.wire}));
+        var interactWireID: ?usize = null;
+        var which: usize = 0;
+        while (wireIter.next()) |entityID| {
+            const entity = world.get(entityID);
+            const wire = entity.wire.?;
+            const nodes = wire.nodes.constSlice();
+            const begin = nodes[0].pos;
+            const end = nodes[wire.nodes.len - 1].pos;
+            var beginDist = distancef(begin, pos.pos);
+            var endDist = distancef(end, pos.pos);
+            if (beginDist < minDistance) {
+                minDistance = beginDist;
+                indicator = vec2ftovec2(begin);
+                interactWireID = entityID;
+                which = 0;
+            } else if (endDist < minDistance) {
+                minDistance = endDist;
+                indicator = vec2ftovec2(end);
+                interactWireID = entityID;
+                which = 1;
+            }
+        }
+        if (interactWireID) |wireID| {
+            var entity = world.get(wireID);
+            if (input.btnp(.one, .two)) {
+                control.grabbing = .{ .id = wireID, .which = which };
+                entity.wire.?.anchored[which] = .{ .grabbed = id };
+            }
+            world.set(wireID, entity);
+        }
+    }
 }
 
 fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
@@ -219,8 +300,30 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
         collideNode(node);
     }
 
-    if (wire.anchored[0] != null) nodes[0].pos = nodes[0].last;
-    if (wire.anchored[1] != null) nodes[nodes.len - 1].pos = nodes[nodes.len - 1].last;
+    if (wire.anchored[0]) |anchor| {
+        switch (anchor) {
+            .stationary => nodes[0].pos = nodes[0].last,
+            .grabbed => |grabbedBy| {
+                var entity = world.get(grabbedBy);
+                // TODO: stop player from pulling the wire through terrain
+                // constrainNodes(&entity.pos.?, &nodes[0]);
+                // world.set(grabbedBy, entity);
+                nodes[0].pos = entity.pos.?.pos + Vec2f{ 0, -6 };
+            },
+        }
+    }
+    if (wire.anchored[1]) |anchor| {
+        switch (anchor) {
+            .stationary => nodes[nodes.len - 1].pos = nodes[nodes.len - 1].last,
+            .grabbed => |grabbedBy| {
+                var entity = world.get(grabbedBy);
+                // TODO: stop player from pulling the wire through terrain
+                // constrainNodes(&entity.pos.?, &nodes[nodes.len - 1]);
+                // world.set(grabbedBy, entity);
+                nodes[nodes.len - 1].pos = entity.pos.?.pos + Vec2f{ 0, -6 };
+            },
+        }
+    }
 
     if (wire.anchored[0] != null and wire.anchored[1] != null) {
         var i: usize = 0;
@@ -266,6 +369,10 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
             }
         }
     }
+
+    for (nodes) |*node| {
+        collideNode(node);
+    }
 }
 
 fn collideNode(node: *Pos) void {
@@ -274,8 +381,6 @@ fn collideNode(node: *Pos) void {
     const iPos = vec2ftovec2(node.pos);
     const mapPos = @divTrunc(iPos, tileSize);
     if (is_solid(mapPos)) {
-        // w4.DRAW_COLORS.* = 0x0011;
-        // w4.rect(mapPos * tileSize, tileSize);
         const velNorm = normalize(node.pos - node.last);
         var collideVec = node.last;
         while (!is_solid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
@@ -285,12 +390,15 @@ fn collideNode(node: *Pos) void {
     }
 }
 
+const wireSegmentMinLength = 3;
+const wireSegmentMaxLength = 6;
+const wireSegmentMaxLengthV = @splat(2, @as(f32, wireSegmentMaxLength));
+
 fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
     var diff = anchor.pos - node.pos;
     var dist = distancef(node.pos, anchor.pos);
-    if (dist > 8) {
-        node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, 8)));
-    }
+    var wireLength = @maximum(wireSegmentMinLength, dist);
+    node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, wireLength)));
 }
 
 fn constrainNodes(prevNode: *Pos, node: *Pos) void {
@@ -298,7 +406,7 @@ fn constrainNodes(prevNode: *Pos, node: *Pos) void {
     var dist = distancef(node.pos, prevNode.pos);
     var difference: f32 = 0;
     if (dist > 0) {
-        difference = (8 - dist) / dist;
+        difference = (@minimum(dist, wireSegmentMinLength) - dist) / dist;
     }
     var translate = diff * @splat(2, 0.5 * difference);
     prevNode.pos += translate;
