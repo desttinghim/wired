@@ -73,7 +73,7 @@ const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usi
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
 const Kinematic = struct { col: AABB, move: Vec2f = Vec2f{ 0, 0 }, lastCol: Vec2f = Vec2f{ 0, 0 } };
-const Wire = struct { end: Vec2f, grabbed: ?enum { begin, end } = null };
+const Wire = struct { nodes: std.BoundedArray(Pos, 10), anchored: [2]?enum { stationary, grabbed } = null };
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
     pos: Pos,
@@ -113,6 +113,11 @@ const playerAnim = pac: {
     break :pac animArr.slice();
 };
 
+fn showErr(msg: []const u8) noreturn {
+    w4.trace("{s}", .{msg});
+    unreachable;
+}
+
 export fn start() void {
     _ = world.create(.{
         .pos = Pos.init(Vec2f{ 100, 80 }),
@@ -124,19 +129,23 @@ export fn start() void {
             .state = Anim{ .anim = &.{} },
         },
         .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
-    }) catch unreachable;
+    }) catch showErr("Creating player");
 
     for (assets.wire) |wire| {
         const begin = Vec2f{ @intToFloat(f32, wire[0][0]), @intToFloat(f32, wire[0][1]) };
         const end = Vec2f{ @intToFloat(f32, wire[1][0]), @intToFloat(f32, wire[1][1]) };
-        const w = Wire{ .end = end };
+        const size = end - begin;
+
+        var nodes = std.BoundedArray(Pos, 10).init(0) catch showErr("Nodes");
+        var i: usize = 0;
+        while (i <= 5) : (i += 1) {
+            const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @as(f32, 5));
+            nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
+        }
+        const w = Wire{ .nodes = nodes, .anchored = .{ .stationary, .stationary } };
         _ = world.create(.{
-            .pos = Pos.init(begin),
             .wire = w,
-        }) catch {
-            w4.trace("problem", .{});
-            unreachable;
-        };
+        }) catch showErr("Adding wire entity");
     }
 }
 
@@ -146,6 +155,7 @@ export fn update() void {
 
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);
+    world.process(1, &.{.wire}, wirePhysicsProcess);
     world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
     world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
@@ -166,7 +176,7 @@ export fn update() void {
         }
     }
 
-    world.process(1, &.{ .pos, .wire }, wireProcess);
+    world.process(1, &.{.wire}, wireDrawProcess);
     input.update();
 }
 
@@ -177,35 +187,118 @@ fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
     return @reduce(.Max, subbed);
 }
 
-var mouseLast = false;
+fn distancef(a: Vec2f, b: Vec2f) f32 {
+    var subbed = @fabs(a - b);
+    return @reduce(.Max, subbed);
+}
 
-fn wireProcess(_: f32, pos: *Pos, wire: *Wire) void {
-    const begin = vec2ftovec2(pos.pos);
-    const end = vec2ftovec2(wire.end);
+fn is_solid(pos: Vec2) bool {
+    if (get_tile(pos[0], pos[1])) |tile| {
+        return tile != 1;
+    }
+    return true;
+}
+
+// -- Returns distance to map cell
+// function tilemap_distance_to(a, m)
+//   local dx, dy = 0, 0
+//   local mx, my, mw, mh = m.x * 8, m.y * 8, 8, 8
+//   if a.x < mx then dx = mx - (a.x + a.w)
+//   elseif a.x > mx then dx = a.x - (mx + mw)
+//   end
+//   if a.y < my then dy = my - (a.y + a.h)
+//   elseif a.y > my then dy = a.y - (my + mh)
+//   end
+//   return dx, dy
+// end
+
+fn length(vec: Vec2f) f32 {
+    var squared = vec * vec;
+    return @sqrt(@reduce(.Add, squared));
+}
+
+fn normalize(vec: Vec2f) Vec2f {
+    return vec / @splat(2, length(vec));
+}
+
+fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
+    var nodes = wire.nodes.slice();
+    if (nodes.len == 0) return;
+
+    for (nodes) |*node, i| {
+        var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.05, 0.05 } };
+        velocityProcess(dt, node);
+        physicsProcess(dt, node, &physics);
+
+        const tileSize = Vec2{ 8, 8 };
+        const tileSizef = vec2tovec2f(tileSize);
+        const iPos = vec2ftovec2(node.pos);
+        const mapPos = @divTrunc(iPos, tileSize);
+        if (is_solid(mapPos)) {
+            // w4.DRAW_COLORS.* = 0x0011;
+            // w4.rect(mapPos * tileSize, tileSize);
+            const velNorm = normalize(node.pos - node.last);
+            var collideVec = node.last;
+            while (!is_solid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
+                collideVec += velNorm;
+            }
+            node.pos = collideVec;
+        }
+
+        if (i > 0) {
+            var nodeBefore = nodes[i - 1];
+            var diff = nodeBefore.pos - node.pos;
+            var dist = distancef(node.pos, nodeBefore.pos);
+            var difference: f32 = 0;
+            if (dist > 0) {
+                difference = (8 - dist) / dist;
+            }
+            var translate = diff * @splat(2, 0.5 * difference);
+            nodeBefore.pos += translate;
+            node.pos -= translate;
+        }
+
+        if (i == 0 and wire.anchored[0] != null) {
+            node.pos = node.last;
+        }
+        // if (i == nodes.len - 1 and wire.anchored[1] != null) {
+        //     node.pos = node.last;
+        // }
+    }
+}
+
+fn wireDrawProcess(_: f32, wire: *Wire) void {
+    var nodes = wire.nodes.slice();
+    if (nodes.len == 0) return;
 
     w4.DRAW_COLORS.* = 0x0001;
-    w4.line(begin, end);
+    for (nodes) |node, i| {
+        if (i == 0) continue;
+        w4.line(vec2ftovec2(nodes[i - 1].pos), vec2ftovec2(node.pos));
+    }
     w4.DRAW_COLORS.* = 0x0031;
 
-    const drawdistance = 16;
-    const clickdistance = 3;
+    // const begin = vec2ftovec2(nodes[0].pos);
+    // const end = vec2ftovec2(nodes[nodes.len - 1].pos);
+    // const drawdistance = 16;
+    // const clickdistance = 3;
 
-    if (wire.grabbed) |whichEnd| {
-        switch (whichEnd) {
-            .begin => pos.pos = vec2tovec2f(w4.MOUSE.pos()),
-            .end => wire.end = vec2tovec2f(w4.MOUSE.pos()),
-        }
-        if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = null;
-    } else {
-        if (distance(begin, w4.MOUSE.pos()) < drawdistance) {
-            w4.oval(begin - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-            if (distance(begin, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .begin;
-        }
-        if (distance(end, w4.MOUSE.pos()) < drawdistance) {
-            w4.oval(end - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
-            if (distance(end, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .end;
-        }
-    }
+    // if (wire.grabbed) |whichEnd| {
+    //     switch (whichEnd) {
+    //         .begin => pos.pos = vec2tovec2f(w4.MOUSE.pos()),
+    //         .end => wire.end = vec2tovec2f(w4.MOUSE.pos()),
+    //     }
+    //     if (w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = null;
+    // } else {
+    //     if (distance(begin, w4.MOUSE.pos()) < drawdistance) {
+    //         w4.oval(begin - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
+    //         if (distance(begin, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .begin;
+    //     }
+    //     if (distance(end, w4.MOUSE.pos()) < drawdistance) {
+    //         w4.oval(end - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
+    //         if (distance(end, w4.MOUSE.pos()) < clickdistance and w4.MOUSE.buttons.left and !mouseLast) wire.grabbed = .end;
+    //     }
+    // }
 }
 
 fn vec2tovec2f(vec2: w4.Vec2) Vec2f {
