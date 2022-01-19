@@ -16,10 +16,11 @@ const Object = struct {
     height: u64 = 0,
     id: u64 = 0,
     name: []const u8,
-    polyline: []Point,
+    point: bool = false,
+    polyline: []Point = &.{},
     properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": enum { wire },
+    @"type": enum { wire, source, door },
     visible: bool = true,
     width: u64 = 0,
     x: f64 = 0,
@@ -116,30 +117,78 @@ pub fn do() !void {
                     _ = try outlist.appendSlice(outcontent);
                 },
                 .objectgroup => {
-                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}]Wire = [_]Wire{{", .{ layer.name, layer.objects.len });
-                    try outlist.appendSlice(outcontent);
+                    var wirelist = std.ArrayList(Object).init(alloc);
+                    defer wirelist.deinit();
+
+                    var doorlist = std.ArrayList(Object).init(alloc);
+                    defer doorlist.deinit();
+
+                    var sourcelist = std.ArrayList(Object).init(alloc);
+                    defer sourcelist.deinit();
 
                     for (layer.objects) |obj| {
-                        try outlist.appendSlice(".{");
-                        var a1 = true;
-                        var a2 = true;
-                        for (obj.properties) |p| {
-                            if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.@"bool";
-                            if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.@"bool";
+                        switch (obj.@"type") {
+                            .wire => try wirelist.append(obj),
+                            .door => try doorlist.append(obj),
+                            .source => try sourcelist.append(obj),
                         }
-                        var of = try std.fmt.bufPrint(&outbuffer, ".a1 = {}, .a2 = {},", .{ a1, a2 });
-                        try outlist.appendSlice(of);
-                        for (obj.polyline) |point, i| {
-                            var pointf = try std.fmt.bufPrint(&outbuffer, ".p{} = Vec2{{ {}, {} }},", .{ i + 1, @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
-                            try outlist.appendSlice(pointf);
-                        }
-                        try outlist.appendSlice("}, ");
                     }
-                    try outlist.appendSlice("};\n");
+
+                    try appendWires(&outlist, wirelist);
+                    try appendDoors(&outlist, doorlist);
+                    try appendSources(&outlist, sourcelist);
                 },
             }
         }
         if (verbose) std.log.info("{s}", .{outlist.items});
         _ = try output.writeAll(outlist.items);
     }
+}
+
+pub fn appendWires(outlist: *std.ArrayList(u8), wirelist: std.ArrayList(Object)) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const wire: [{}]Wire = [_]Wire{{", .{wirelist.items.len});
+    try outlist.appendSlice(outcontent);
+
+    for (wirelist.items) |obj| {
+        try outlist.appendSlice(".{");
+        var a1 = true;
+        var a2 = true;
+        for (obj.properties) |p| {
+            if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.@"bool";
+            if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.@"bool";
+        }
+        var of = try std.fmt.bufPrint(&outbuffer, ".a1 = {}, .a2 = {},", .{ a1, a2 });
+        try outlist.appendSlice(of);
+        for (obj.polyline) |point, i| {
+            var pointf = try std.fmt.bufPrint(&outbuffer, ".p{} = Vec2{{ {}, {} }},", .{ i + 1, @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
+            try outlist.appendSlice(pointf);
+        }
+        try outlist.appendSlice("}, ");
+    }
+    try outlist.appendSlice("};\n");
+}
+
+pub fn appendDoors(outlist: *std.ArrayList(u8), doorlist: std.ArrayList(Object)) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const doors: [{}]Vec2 = [_]Vec2{{", .{doorlist.items.len});
+    try outlist.appendSlice(outcontent);
+
+    for (doorlist.items) |obj| {
+        var doorf = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y, 8)) });
+        try outlist.appendSlice(doorf);
+    }
+    try outlist.appendSlice("};\n");
+}
+
+pub fn appendSources(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Object)) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const sources: [{}]Vec2 = [_]Vec2{{", .{sourcelist.items.len});
+    try outlist.appendSlice(outcontent);
+
+    for (sourcelist.items) |obj| {
+        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y, 8)) });
+        try outlist.appendSlice(sourcef);
+    }
+    try outlist.appendSlice("};\n");
 }

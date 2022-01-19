@@ -175,7 +175,7 @@ export fn start() void {
     }
 }
 
-var indicator: ?Vec2 = null;
+var indicator: ?struct { pos: Vec2, t: enum { wire, plug } } = null;
 var time: usize = 0;
 
 export fn update() void {
@@ -208,7 +208,8 @@ export fn update() void {
 
     world.process(1, &.{.wire}, wireDrawProcess);
 
-    if (indicator) |pos| {
+    if (indicator) |details| {
+        const pos = details.pos;
         const stage = @divTrunc((time % 60), 30);
         var size = Vec2{ 0, 0 };
         switch (stage) {
@@ -220,7 +221,10 @@ export fn update() void {
         w4.DRAW_COLORS.* = 0x0020;
         var half = Vec2{ @divTrunc(size[0], 2), @divTrunc(size[1], 2) };
         // w4.trace("{}", .{half});
-        w4.oval(pos - half, size);
+        switch (details.t) {
+            .wire => w4.oval(pos - half, size),
+            .plug => w4.rect(pos - half, size),
+        }
     }
 
     indicator = null;
@@ -229,7 +233,7 @@ export fn update() void {
 }
 
 fn is_plug(tile: u8) bool {
-    return tile == 177 or tile == 178 or tile == 179 or tile == 180 or tile == 147;
+    return (tile >= 149 and tile <= 153) or tile == 147;
 }
 
 /// pos should be in tile coordinates, not world coordinates
@@ -259,7 +263,7 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         var length = wireLength(wire);
 
         if (length > maxLength * 1.5) {
-            nodes[details.which].pinned = false; // = pos.pos + Vec2f{ 0, -4 };
+            nodes[details.which].pinned = false;
             control.grabbing = null;
             world.set(details.id, e);
             return;
@@ -269,11 +273,11 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
 
         var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
         if (is_plug(get_conduit(mapPos) orelse 0)) {
-            indicator = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 };
+            indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
             if (input.btnp(.one, .two)) {
                 e.wire.?.nodes.slice()[details.which].pinned = true;
-                e.wire.?.nodes.slice()[details.which].pos = vec2tovec2f(indicator.?);
-                e.wire.?.nodes.slice()[details.which].last = vec2tovec2f(indicator.?);
+                e.wire.?.nodes.slice()[details.which].pos = vec2tovec2f(indicator.?.pos);
+                e.wire.?.nodes.slice()[details.which].last = vec2tovec2f(indicator.?.pos);
                 control.grabbing = null;
             }
         } else if (input.btnp(.one, .two)) {
@@ -297,12 +301,12 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
             var endDist = distancef(end, pos.pos + offset);
             if (beginDist < minDistance) {
                 minDistance = beginDist;
-                indicator = vec2ftovec2(begin);
+                indicator = .{ .t = .wire, .pos = vec2ftovec2(begin) };
                 interactWireID = entityID;
                 which = 0;
             } else if (endDist < minDistance) {
                 minDistance = endDist;
-                indicator = vec2ftovec2(end);
+                indicator = .{ .t = .wire, .pos = vec2ftovec2(end) };
                 interactWireID = entityID;
                 which = wire.nodes.len - 1;
             }
