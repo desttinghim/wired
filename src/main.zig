@@ -160,8 +160,8 @@ export fn start() void {
 
         var nodes = std.BoundedArray(Pos, 32).init(0) catch showErr("Nodes");
         var i: usize = 0;
-        const divisions = @floatToInt(usize, length(size) / 6);
-        w4.trace("{d:.0} long, {} divisions", .{ length(size), divisions });
+        const divisions = @floatToInt(usize, vec_length(size) / 6);
+        w4.trace("{d:.0} long, {} divisions", .{ vec_length(size), divisions });
         while (i <= divisions) : (i += 1) {
             const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, divisions));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
@@ -209,12 +209,18 @@ export fn update() void {
     world.process(1, &.{.wire}, wireDrawProcess);
 
     if (indicator) |pos| {
-        if (@divTrunc((time % 60), 30) == 0)
-            w4.DRAW_COLORS.* = 0x0031
-        else
-            w4.DRAW_COLORS.* = 0x0030;
+        const stage = @divTrunc((time % 60), 30);
+        var size = Vec2{ 0, 0 };
+        switch (stage) {
+            0 => size = Vec2{ 6, 6 },
+            // 1 => size = Vec2{ 5, 5 },
+            else => size = Vec2{ 8, 8 },
+        }
 
-        w4.oval(pos - w4.Vec2{ 2, 2 }, w4.Vec2{ 5, 5 });
+        w4.DRAW_COLORS.* = 0x0020;
+        var half = Vec2{ @divTrunc(size[0], 2), @divTrunc(size[1], 2) };
+        // w4.trace("{}", .{half});
+        w4.oval(pos - half, size);
     }
 
     indicator = null;
@@ -248,18 +254,18 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         var e = world.get(details.id);
         var wire = &e.wire.?;
         var nodes = wire.nodes.slice();
-        // e.wire.?.nodes.slice()[details.which].pos = pos.pos;
-        // e.wire.?.nodes.slice()[details.which].last = pos.pos;
-        // constrainNodes(pos, &e.wire.?.nodes.slice()[details.which]);
-        var t = if (details.which == 0)
-            tension(&nodes[details.which], &nodes[details.which + 1])
-        else
-            tension(&nodes[details.which], &nodes[details.which - 1]);
 
-        if (t > 1)
-            constrainNodes(pos, &nodes[details.which])
-        else
+        var maxLength = wireMaxLength(wire);
+        var length = wireLength(wire);
+
+        if (length > maxLength * 1.5) {
+            nodes[details.which].pinned = false; // = pos.pos + Vec2f{ 0, -4 };
+            control.grabbing = null;
+            world.set(details.id, e);
+            return;
+        } else {
             nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
+        }
 
         var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
         if (is_plug(get_conduit(mapPos) orelse 0)) {
@@ -332,13 +338,13 @@ fn is_solid(pos: Vec2) bool {
     return true;
 }
 
-fn length(vec: Vec2f) f32 {
+fn vec_length(vec: Vec2f) f32 {
     var squared = vec * vec;
     return @sqrt(@reduce(.Add, squared));
 }
 
 fn normalize(vec: Vec2f) Vec2f {
-    return vec / @splat(2, length(vec));
+    return vec / @splat(2, vec_length(vec));
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
@@ -349,6 +355,7 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
         var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.05, 0.05 } };
         velocityProcess(dt, node);
         physicsProcess(dt, node, &physics);
+        collideNode(node);
     }
 
     var iterations: usize = 0;
@@ -421,18 +428,32 @@ fn collidePointMap(point: Vec2f) ?Hit {
 const wireSegmentMaxLength = 4;
 const wireSegmentMaxLengthV = @splat(2, @as(f32, wireSegmentMaxLength));
 
-fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
-    var diff = anchor.pos - node.pos;
-    var dist = distancef(node.pos, anchor.pos);
-    var wireLength = @maximum(wireSegmentMaxLength, dist);
-    node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, wireLength)));
+// fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
+//     var diff = anchor.pos - node.pos;
+//     var dist = distancef(node.pos, anchor.pos);
+//     var wireLength = @maximum(wireSegmentMaxLength, dist);
+//     node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, wireLength)));
+// }
+
+fn wireMaxLength(wire: *Wire) f32 {
+    return @intToFloat(f32, wire.nodes.len) * wireSegmentMaxLength;
+}
+
+fn wireLength(wire: *Wire) f32 {
+    var nodes = wire.nodes.slice();
+    var length: f32 = 0;
+    var i: usize = 1;
+    while (i < nodes.len) : (i += 1) {
+        length += distancef(nodes[i - 1].pos, nodes[i].pos);
+    }
+    return length;
 }
 
 fn tension(prevNode: *Pos, node: *Pos) f32 {
     var dist = distancef(node.pos, prevNode.pos);
     var difference: f32 = 0;
     if (dist > 0) {
-        difference = (wireSegmentMaxLength - dist) / dist;
+        difference = (@minimum(dist, wireSegmentMaxLength) - dist) / dist;
     }
     return difference;
 }
@@ -453,12 +474,11 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
 
-    w4.DRAW_COLORS.* = 0x0001;
+    w4.DRAW_COLORS.* = 0x0002;
     for (nodes) |node, i| {
         if (i == 0) continue;
         w4.line(vec2ftovec2(nodes[i - 1].pos), vec2ftovec2(node.pos));
     }
-    w4.DRAW_COLORS.* = 0x0031;
 }
 
 fn vec2tovec2f(vec2: w4.Vec2) Vec2f {
@@ -522,6 +542,7 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
     if (delta[0] > 0) control.facing = .right;
     if (delta[0] < 0) control.facing = .left;
     if (input.btn(.one, .up)) control.facing = .up;
+    if (input.btn(.one, .down)) control.facing = .down;
     var move = delta * @splat(2, @as(f32, 0.2));
     pos.pos += move;
 }
