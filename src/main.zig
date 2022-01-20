@@ -51,7 +51,7 @@ const Kinematic = struct {
         return this.isFalling() and !approxEqAbs(f32, this.lastCol[0], 0, 0.01);
     }
 };
-const Wire = struct { nodes: std.BoundedArray(Pos, 32) };
+const Wire = struct { nodes: std.BoundedArray(Pos, 32), enabled: bool = false };
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
     pos: Pos,
@@ -141,23 +141,12 @@ export fn start() void {
     }
 }
 
-var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever } } = null;
+var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever }, active: bool = false } = null;
 var time: usize = 0;
 
 export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
-
-    world.process(1, &.{.pos}, velocityProcess);
-    world.process(1, &.{ .pos, .physics }, physicsProcess);
-    world.process(1, &.{ .pos, .control }, wireManipulationProcess);
-    world.process(1, &.{ .pos, .control }, circuitManipulationProcess);
-    world.process(1, &.{.wire}, wirePhysicsProcess);
-    world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
-    world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
-    world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
-    world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
-    world.process(1, &.{ .pos, .sprite }, drawProcess);
 
     {
         circuit.clear();
@@ -169,12 +158,28 @@ export fn update() void {
             const cellBegin = util.world2cell(nodes[0].pos);
             const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
 
-            circuit.bridge(.{ cellBegin, cellEnd });
+            circuit.bridge(.{ cellBegin, cellEnd }, wireID);
         }
         for (assets.sources) |source| {
             circuit.fill(source);
         }
+        var wireComponents = world.components.items(.wire);
+        var enabledWires = circuit.enabledBridges();
+        for (enabledWires.slice()) |wireID| {
+            wireComponents[wireID].?.enabled = true;
+        }
     }
+
+    world.process(1, &.{.pos}, velocityProcess);
+    world.process(1, &.{ .pos, .physics }, physicsProcess);
+    world.process(1, &.{ .pos, .control }, wireManipulationProcess);
+    world.process(1, &.{ .pos, .control }, circuitManipulationProcess);
+    world.process(1, &.{.wire}, wirePhysicsProcess);
+    world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
+    world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
+    world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
+    world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
+    world.process(1, &.{ .pos, .sprite }, drawProcess);
 
     map.draw();
 
@@ -199,7 +204,7 @@ export fn update() void {
             else => size = Vec2{ 8, 8 },
         }
 
-        if (circuit.isEnabled(util.vec2cell(pos))) {
+        if (details.active) {
             w4.tone(.{ .start = 60, .end = 1 }, .{ .release = 30, .sustain = 0 }, 10, .{ .channel = .triangle });
             w4.DRAW_COLORS.* = 0x0020;
         } else {
@@ -268,7 +273,8 @@ fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
         }
 
         if (Circuit.is_plug(circuit.get_cell(mapPos) orelse 0)) {
-            indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
+            const active = circuit.isEnabled(mapPos);
+            indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 }, .active = active };
             if (input.btnp(.one, .two)) {
                 nodes[details.which].pinned = true;
                 nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
@@ -296,14 +302,14 @@ fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
             var dist = util.distancef(begin, offsetPos);
             if (dist < minDistance) {
                 minDistance = dist;
-                indicator = .{ .t = .wire, .pos = vec2ftovec2(begin) };
+                indicator = .{ .t = .wire, .pos = vec2ftovec2(begin), .active = wire.enabled };
                 interactWireID = entityID;
                 which = 0;
             }
             dist = util.distancef(end, offsetPos);
             if (dist < minDistance) {
                 minDistance = dist;
-                indicator = .{ .t = .wire, .pos = vec2ftovec2(end) };
+                indicator = .{ .t = .wire, .pos = vec2ftovec2(end), .active = wire.enabled };
                 interactWireID = entityID;
                 which = wire.nodes.len - 1;
             }
@@ -391,11 +397,12 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
 
-    w4.DRAW_COLORS.* = 0x0002;
+    w4.DRAW_COLORS.* = if (wire.enabled) 0x0002 else 0x0003;
     for (nodes) |node, i| {
         if (i == 0) continue;
         w4.line(vec2ftovec2(nodes[i - 1].pos), vec2ftovec2(node.pos));
     }
+    wire.enabled = false;
 }
 
 fn vec2tovec2f(vec2: w4.Vec2) Vec2f {

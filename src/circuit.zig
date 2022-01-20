@@ -132,16 +132,17 @@ fn cell2index(c: Cell) ?usize {
 const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
 const CellMap = [MAXCELLS]CellState;
+const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 
 offset: Cell,
 cells: CellMap,
-bridges: std.BoundedArray([2]Cell, 10),
+bridges: std.BoundedArray(BridgeState, 10),
 
 pub fn init() @This() {
     var this = @This(){
         .offset = Cell{ 0, 0 },
         .cells = undefined,
-        .bridges = std.BoundedArray([2]Cell, 10).init(0) catch unreachable,
+        .bridges = std.BoundedArray(BridgeState, 10).init(0) catch unreachable,
     };
     return this;
 }
@@ -169,12 +170,20 @@ pub fn enable(this: *@This(), cell: Cell) void {
     }
 }
 
-pub fn bridge(this: *@This(), cells: [2]Cell) void {
+pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
     if (this.indexOf(cells[0])) |_| {
         if (this.indexOf(cells[1])) |_| {
-            this.bridges.append(cells) catch unreachable;
+            this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false }) catch unreachable;
         }
     }
+}
+
+pub fn enabledBridges(this: @This()) std.BoundedArray(usize, 10) {
+    var items = std.BoundedArray(usize, 10).init(0) catch unreachable;
+    for (this.bridges.constSlice()) |b| {
+        if (b.enabled) items.append(b.id) catch unreachable;
+    }
+    return items;
 }
 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
@@ -227,11 +236,13 @@ pub fn fill(this: *@This(), rootRaw: Cell) void {
             q.insert(cell + delta);
         }
         if (is_plug(tile)) {
-            for (this.bridges.constSlice()) |b| {
-                if (@reduce(.And, b[0] == cell)) {
-                    q.insert(b[1]);
-                } else if (@reduce(.And, b[1] == cell)) {
-                    q.insert(b[0]);
+            for (this.bridges.slice()) |*b| {
+                if (@reduce(.And, b.cells[0] == cell)) {
+                    q.insert(b.cells[1]);
+                    b.enabled = true;
+                } else if (@reduce(.And, b.cells[1] == cell)) {
+                    q.insert(b.cells[0]);
+                    b.enabled = true;
                 }
             }
         }
