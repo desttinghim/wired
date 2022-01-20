@@ -4,6 +4,27 @@ pub const Vec2f = std.meta.Vector(2, f32);
 pub const Vec2 = std.meta.Vector(2, i32);
 pub const Cell = Vec2;
 
+pub fn distance(a: Vec2, b: Vec2) i32 {
+    var subbed = a - b;
+    subbed[0] = std.math.absInt(subbed[0]) catch unreachable;
+    subbed[1] = std.math.absInt(subbed[1]) catch unreachable;
+    return @reduce(.Max, subbed);
+}
+
+pub fn distancef(a: Vec2f, b: Vec2f) f32 {
+    var subbed = @fabs(a - b);
+    return @reduce(.Max, subbed);
+}
+
+pub fn lengthf(vec: Vec2f) f32 {
+    var squared = vec * vec;
+    return @sqrt(@reduce(.Add, squared));
+}
+
+pub fn normalizef(vec: Vec2f) Vec2f {
+    return vec / @splat(2, lengthf(vec));
+}
+
 pub fn world2cell(vec: Vec2f) Vec2 {
     return vec2fToVec2(vec / @splat(2, @as(f32, 8)));
 }

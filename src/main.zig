@@ -144,7 +144,7 @@ export fn start() void {
         .pos = Pos.init(Vec2f{ 100, 80 }),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
-        .physics = .{ .friction = Vec2f{ 0.05, 0.01 }, .gravity = Vec2f{ 0, 0.25 } },
+        .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
             .state = Anim{ .anim = &.{} },
@@ -159,7 +159,7 @@ export fn start() void {
 
         var nodes = std.BoundedArray(Pos, 32).init(0) catch showErr("Nodes");
         var i: usize = 0;
-        const divisions = @floatToInt(usize, vec_length(size) / 6);
+        const divisions = @floatToInt(usize, util.lengthf(size) / 6);
         while (i <= divisions) : (i += 1) {
             const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, divisions));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
@@ -338,14 +338,14 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
             const nodes = wire.nodes.constSlice();
             const begin = nodes[0].pos;
             const end = nodes[wire.nodes.len - 1].pos;
-            var dist = distancef(begin, pos.pos + offset);
+            var dist = util.distancef(begin, pos.pos + offset);
             if (dist < minDistance) {
                 minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(begin) };
                 interactWireID = entityID;
                 which = 0;
             }
-            dist = distancef(end, pos.pos + offset);
+            dist = util.distancef(end, pos.pos + offset);
             if (dist < minDistance) {
                 minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(end) };
@@ -365,33 +365,12 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
     }
 }
 
-fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
-    var subbed = a - b;
-    subbed[0] = std.math.absInt(subbed[0]) catch unreachable;
-    subbed[1] = std.math.absInt(subbed[1]) catch unreachable;
-    return @reduce(.Max, subbed);
-}
-
-fn distancef(a: Vec2f, b: Vec2f) f32 {
-    var subbed = @fabs(a - b);
-    return @reduce(.Max, subbed);
-}
-
-fn vec_length(vec: Vec2f) f32 {
-    var squared = vec * vec;
-    return @sqrt(@reduce(.Add, squared));
-}
-
-fn normalize(vec: Vec2f) Vec2f {
-    return vec / @splat(2, vec_length(vec));
-}
-
 fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
 
     for (nodes) |*node| {
-        var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.05, 0.05 } };
+        var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.1, 0.1 } };
         velocityProcess(dt, node);
         physicsProcess(dt, node, &physics);
         collideNode(node);
@@ -417,7 +396,7 @@ fn collideNode(node: *Pos) void {
     const iPos = vec2ftovec2(node.pos);
     const mapPos = @divTrunc(iPos, tileSize);
     if (map.isSolid(mapPos)) {
-        const velNorm = normalize(node.pos - node.last);
+        const velNorm = util.normalizef(node.pos - node.last);
         var collideVec = node.last;
         while (!map.isSolid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
             collideVec += velNorm;
@@ -438,13 +417,13 @@ fn wireLength(wire: *Wire) f32 {
     var length: f32 = 0;
     var i: usize = 1;
     while (i < nodes.len) : (i += 1) {
-        length += distancef(nodes[i - 1].pos, nodes[i].pos);
+        length += util.distancef(nodes[i - 1].pos, nodes[i].pos);
     }
     return length;
 }
 
 fn tension(prevNode: *Pos, node: *Pos) f32 {
-    var dist = distancef(node.pos, prevNode.pos);
+    var dist = util.distancef(node.pos, prevNode.pos);
     var difference: f32 = 0;
     if (dist > 0) {
         difference = (@minimum(dist, wireSegmentMaxLength) - dist) / dist;
@@ -454,7 +433,7 @@ fn tension(prevNode: *Pos, node: *Pos) f32 {
 
 fn constrainNodes(prevNode: *Pos, node: *Pos) void {
     var diff = prevNode.pos - node.pos;
-    var dist = distancef(node.pos, prevNode.pos);
+    var dist = util.distancef(node.pos, prevNode.pos);
     var difference: f32 = 0;
     if (dist > 0) {
         difference = (wireSegmentMaxLength - dist) / dist;
@@ -584,16 +563,14 @@ fn velocityProcess(_: f32, pos: *Pos) void {
     if (pos.pinned) return;
     var vel = pos.pos - pos.last;
 
-    vel *= @splat(2, @as(f32, 0.9));
     vel = @minimum(Vec2f{ 8, 8 }, @maximum(Vec2f{ -8, -8 }, vel));
 
     pos.last = pos.pos;
     pos.pos += vel;
 }
 
-fn physicsProcess(dt: f32, pos: *Pos, physics: *Physics) void {
+fn physicsProcess(_: f32, pos: *Pos, physics: *Physics) void {
     if (pos.pinned) return;
-    _ = dt;
     var friction = @splat(2, @as(f32, 1)) - physics.friction;
     pos.pos = pos.last + (pos.pos - pos.last) * friction;
     pos.pos += physics.gravity;
