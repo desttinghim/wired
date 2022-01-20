@@ -107,7 +107,7 @@ pub fn collide(this: @This(), rect: util.AABB) std.BoundedArray(util.AABB, 9) {
 
 pub fn isSolid(this: @This(), cell: Cell) bool {
     if (this.getTile(cell[0], cell[1])) |tile| {
-        return tile != 0;
+        return tile != 0 and tile != 1;
     }
     return true;
 }

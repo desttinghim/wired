@@ -109,7 +109,7 @@ export fn start() void {
     w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
 
     _ = world.create(.{
-        .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 4 }),
+        .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
@@ -196,13 +196,16 @@ export fn update() void {
         var size = Vec2{ 0, 0 };
         switch (stage) {
             0 => size = Vec2{ 6, 6 },
-            // 1 => size = Vec2{ 5, 5 },
             else => size = Vec2{ 8, 8 },
         }
 
-        w4.DRAW_COLORS.* = 0x0020;
+        if (circuit.isEnabled(util.vec2cell(pos))) {
+            w4.tone(.{ .start = 60, .end = 1 }, .{ .release = 30, .sustain = 0 }, 10, .{ .channel = .triangle });
+            w4.DRAW_COLORS.* = 0x0020;
+        } else {
+            w4.DRAW_COLORS.* = 0x0030;
+        }
         var half = Vec2{ @divTrunc(size[0], 2), @divTrunc(size[1], 2) };
-        // w4.trace("{}", .{half});
         switch (details.t) {
             .wire => w4.oval(pos - half, size),
             .plug => w4.rect(pos - half, size),

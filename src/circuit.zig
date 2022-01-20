@@ -177,7 +177,7 @@ pub fn bridge(this: *@This(), cells: [2]Cell) void {
     }
 }
 
-pub fn enabled(this: @This(), cell: Cell) bool {
+pub fn isEnabled(this: @This(), cell: Cell) bool {
     if (this.indexOf(cell)) |c| {
         return this.cells[c].enabled;
     }
@@ -223,6 +223,7 @@ pub fn fill(this: *@This(), rootRaw: Cell) void {
             if (!conductor) continue;
             const s = @intToEnum(Side, i);
             const delta = dir(s);
+            // TODO: check that cell can recieve from this side
             q.insert(cell + delta);
         }
         if (is_plug(tile)) {

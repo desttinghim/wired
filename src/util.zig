@@ -29,6 +29,10 @@ pub fn world2cell(vec: Vec2f) Vec2 {
     return vec2fToVec2(vec / @splat(2, @as(f32, 8)));
 }
 
+pub fn vec2cell(vec: Vec2) Cell {
+    return @divTrunc(vec, @splat(2, @as(i32, 8)));
+}
+
 pub fn vec2ToVec2f(vec2: Vec2) Vec2f {
     return Vec2f{ @intToFloat(f32, vec2[0]), @intToFloat(f32, vec2[1]) };
 }
