@@ -3,18 +3,13 @@ const w4 = @import("wasm4.zig");
 const ecs = @import("ecs.zig");
 const assets = @import("assets");
 const input = @import("input.zig");
+const util = @import("util.zig");
 const Circuit = @import("circuit.zig");
+const Map = @import("map.zig");
 
-const Vec2 = std.meta.Vector(2, i32);
-const Vec2f = std.meta.Vector(2, f32);
-const AABB = struct {
-    pos: Vec2f,
-    size: Vec2f,
-
-    pub fn addv(this: @This(), vec2f: Vec2f) @This() {
-        return @This(){ .pos = this.pos + vec2f, .size = this.size };
-    }
-};
+const Vec2 = util.Vec2;
+const Vec2f = util.Vec2f;
+const AABB = util.AABB;
 const Anim = struct {
     time: usize = 0,
     currentOp: usize = 0,
@@ -112,9 +107,10 @@ const World = ecs.World(Component);
 
 // Global vars
 const KB = 1024;
-var heap: [8 * KB]u8 = undefined;
+var heap: [16 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
+var map: Map = undefined;
 var circuit = Circuit.init(Vec2{ 0, 0 }, &assets.conduit);
 
 const anim_store = struct {
@@ -143,6 +139,7 @@ fn showErr(msg: []const u8) noreturn {
 }
 
 export fn start() void {
+    map = Map.init(Vec2{ 0, 0 }, &assets.solid, fba.allocator()) catch showErr("Couldn't init map");
     _ = world.create(.{
         .pos = Pos.init(Vec2f{ 100, 80 }),
         .control = .{ .controller = .player, .state = .stand },
@@ -215,13 +212,7 @@ export fn update() void {
         }
     }
 
-    w4.DRAW_COLORS.* = 0x0210;
-    for (assets.solid) |tilePlus, i| {
-        const tile = tilePlus - 1;
-        const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
-        const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
-        w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
-    }
+    map.draw();
 
     for (circuit.cells) |cell, i| {
         const tilePlus = cell.tile;
@@ -337,7 +328,8 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
     } else {
         const interactDistance = 4;
         var minDistance: f32 = interactDistance;
-        var wireIter = world.iter(World.Query.require(&.{.wire}));
+        const q = World.Query.require(&.{.wire});
+        var wireIter = world.iter(q);
         var interactWireID: ?usize = null;
         var which: usize = 0;
         while (wireIter.next()) |entityID| {
@@ -346,15 +338,16 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
             const nodes = wire.nodes.constSlice();
             const begin = nodes[0].pos;
             const end = nodes[wire.nodes.len - 1].pos;
-            var beginDist = distancef(begin, pos.pos + offset);
-            var endDist = distancef(end, pos.pos + offset);
-            if (beginDist < minDistance) {
-                minDistance = beginDist;
+            var dist = distancef(begin, pos.pos + offset);
+            if (dist < minDistance) {
+                minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(begin) };
                 interactWireID = entityID;
                 which = 0;
-            } else if (endDist < minDistance) {
-                minDistance = endDist;
+            }
+            dist = distancef(end, pos.pos + offset);
+            if (dist < minDistance) {
+                minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(end) };
                 interactWireID = entityID;
                 which = wire.nodes.len - 1;
@@ -382,13 +375,6 @@ fn distance(a: w4.Vec2, b: w4.Vec2) i32 {
 fn distancef(a: Vec2f, b: Vec2f) f32 {
     var subbed = @fabs(a - b);
     return @reduce(.Max, subbed);
-}
-
-fn is_solid(pos: Vec2) bool {
-    if (get_tile(pos[0], pos[1])) |tile| {
-        return tile != 1;
-    }
-    return true;
 }
 
 fn vec_length(vec: Vec2f) f32 {
@@ -430,63 +416,18 @@ fn collideNode(node: *Pos) void {
     const tileSizef = vec2tovec2f(tileSize);
     const iPos = vec2ftovec2(node.pos);
     const mapPos = @divTrunc(iPos, tileSize);
-    if (is_solid(mapPos)) {
+    if (map.isSolid(mapPos)) {
         const velNorm = normalize(node.pos - node.last);
         var collideVec = node.last;
-        while (!is_solid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
+        while (!map.isSolid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
             collideVec += velNorm;
         }
         node.pos = collideVec;
     }
 }
 
-const Hit = struct {
-    delta: Vec2f,
-    normal: Vec2f,
-    pos: Vec2f,
-};
-const mapTileVecf = Vec2f{ 8, 8 };
-const mapTileVec = Vec2{ 8, 8 };
-/// Returns delta
-fn collidePointMap(point: Vec2f) ?Hit {
-    const cell = vec2ftovec2(point / mapTileVecf);
-    const mapPos = vec2tovec2f(cell * mapTileVec);
-    const half = (mapTileVecf / @splat(2, @as(f32, 2)));
-    if (is_solid(cell)) {
-        const diff = mapPos - point;
-        const p = half - @fabs(diff);
-        var delta = Vec2f{ 0, 0 };
-        var normal = Vec2f{ 0, 0 };
-        var pos = Vec2f{ 0, 0 };
-        if (p[0] > p[1]) {
-            const sx = std.math.copysign(f32, 1, delta[0]);
-            delta[0] = p[0] * sx;
-            normal[0] = sx;
-            pos = Vec2f{ point[0] + (half[0] * sx), point[1] };
-        } else {
-            const sy = std.math.copysign(f32, 1, delta[1]);
-            delta[1] = p[1] * sy;
-            normal[1] = sy;
-            pos = Vec2f{ point[0], point[1] + (half[1] * sy) };
-        }
-        return Hit{
-            .delta = delta,
-            .normal = normal,
-            .pos = pos,
-        };
-    }
-    return null;
-}
-
 const wireSegmentMaxLength = 4;
 const wireSegmentMaxLengthV = @splat(2, @as(f32, wireSegmentMaxLength));
-
-// fn constrainToAnchor(anchor: *Pos, node: *Pos) void {
-//     var diff = anchor.pos - node.pos;
-//     var dist = distancef(node.pos, anchor.pos);
-//     var wireLength = @maximum(wireSegmentMaxLength, dist);
-//     node.pos = anchor.pos - (normalize(diff) * @splat(2, @as(f32, wireLength)));
-// }
 
 fn wireMaxLength(wire: *Wire) f32 {
     return @intToFloat(f32, wire.nodes.len) * wireSegmentMaxLength;
@@ -600,13 +541,6 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
     pos.pos += move;
 }
 
-/// pos should be in tile coordinates, not world coordinates
-fn get_tile(x: i32, y: i32) ?u8 {
-    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
-    const i = x + y * 20;
-    return assets.solid[@intCast(u32, i)];
-}
-
 fn getTile(cell: Vec2) ?u8 {
     const x = cell[0];
     const y = cell[1];
@@ -615,45 +549,10 @@ fn getTile(cell: Vec2) ?u8 {
     return assets.solid[@intCast(u32, i)];
 }
 
-fn cellCollider(cell: Vec2) AABB {
-    const tileSize = 8;
-    return AABB{
-        .pos = vec2tovec2f(cell * tileSize),
-        .size = @splat(2, @as(f32, tileSize)),
-    };
-}
-
-/// rect should be absolutely positioned. Add pos to kinematic.collider
-fn level_collide(rect: AABB) std.BoundedArray(AABB, 9) {
-    const tileSize = 8;
-    const top_left = rect.pos / @splat(2, @as(f32, tileSize));
-    const bot_right = (rect.pos + rect.size) / @splat(2, @as(f32, tileSize));
-    var collisions = std.BoundedArray(AABB, 9).init(0) catch unreachable;
-
-    var i: isize = @floatToInt(i32, top_left[0]);
-    while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
-        var a: isize = @floatToInt(i32, top_left[1]);
-        while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
-            var tile = get_tile(i, a);
-            if (tile == null or tile.? != 1) {
-                collisions.append(AABB{
-                    .pos = Vec2f{
-                        @intToFloat(f32, i * tileSize),
-                        @intToFloat(f32, a * tileSize),
-                    },
-                    .size = Vec2f{ tileSize, tileSize },
-                }) catch unreachable;
-            }
-        }
-    }
-
-    return collisions;
-}
-
 fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
     var next = pos.last;
     next[0] = pos.pos[0];
-    var hcol = level_collide(kinematic.col.addv(next));
+    var hcol = map.collide(kinematic.col.addv(next));
     if (hcol.len > 0) {
         kinematic.lastCol[0] = next[0] - pos.last[0];
         next[0] = pos.last[0];
@@ -662,7 +561,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
     }
 
     next[1] = pos.pos[1];
-    var vcol = level_collide(kinematic.col.addv(next));
+    var vcol = map.collide(kinematic.col.addv(next));
     if (vcol.len > 0) {
         kinematic.lastCol[1] = next[1] - pos.last[1];
         next[1] = pos.last[1];
@@ -671,7 +570,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
     }
 
     var colPosAbs = next + kinematic.lastCol;
-    var lastCol = level_collide(kinematic.col.addv(colPosAbs));
+    var lastCol = map.collide(kinematic.col.addv(colPosAbs));
     if (lastCol.len == 0) {
         kinematic.lastCol = Vec2f{ 0, 0 };
     }

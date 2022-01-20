@@ -152,21 +152,18 @@ pub fn World(comptime ComponentBase: type) type {
         const Self = @This();
         const Iterator = struct {
             world: *Self,
-            // lastIndex: ?usize,
             index: usize,
             query: ComponentQuery,
 
             pub fn init(w: *Self, q: ComponentQuery) @This() {
                 return @This(){
                     .world = w,
-                    // .lastComponent = null,
                     .index = 0,
                     .query = q,
                 };
             }
 
             pub fn next(this: *@This()) ?usize {
-                // if (this.lastIndex) |_| this.index += 1;
                 if (this.index == this.world.components.len) return null;
                 var match = false;
                 while (!match) {

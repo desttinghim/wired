@@ -1,4 +1,8 @@
 const std = @import("std");
+const util = @import("util.zig");
+
+const Vec2 = util.Vec2;
+const Cell = util.Cell;
 
 fn is_circuit(tile: u8) bool {
     return is_plug(tile) or is_conduit(tile) or is_switch(tile);
@@ -95,8 +99,6 @@ fn get_signals(tile: u8) Signals {
     };
 }
 
-const Vec2 = std.meta.Vector(2, i32);
-const Cell = Vec2;
 fn dir(s: Side) Cell {
     return switch (s) {
         .up => Vec2{ 0, -1 },
@@ -129,7 +131,7 @@ fn cell2index(c: Cell) ?usize {
 
 const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
-const CellMap = [MAXCELLS]CellState; // std.AutoHashMap(Cell, CellState);
+const CellMap = [MAXCELLS]CellState;
 
 offset: Cell,
 cells: CellMap,
