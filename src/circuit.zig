@@ -1,5 +1,4 @@
 const std = @import("std");
-const assets = @import("assets");
 
 fn is_circuit(tile: u8) bool {
     return is_plug(tile) or is_conduit(tile) or is_switch(tile);
@@ -16,8 +15,12 @@ fn is_conduit(tile: u8) bool {
         (tile >= 176 and tile < 180);
 }
 
-fn is_switch(tile: u8) bool {
+pub fn is_switch(tile: u8) bool {
     return tile >= 134 and tile < 136;
+}
+
+fn toggle_switch(tile: u8) u8 {
+    return if (tile == 134) 135 else 134;
 }
 
 const Side = enum(u2) { up, right, down, left };
@@ -51,10 +54,10 @@ fn get_inputs(tile: u8) Current {
         178 => .{ true, false, true, true },
         179 => .{ true, true, true, false },
         // Plugs
-        149 => .{ false, false, true, false },
-        150 => .{ true, false, false, false },
-        151 => .{ false, false, false, true },
-        152 => .{ false, true, false, false },
+        150 => .{ false, false, true, false },
+        151 => .{ true, false, false, false },
+        152 => .{ false, false, false, true },
+        153 => .{ false, true, false, false },
         // Closed switch
         134 => .{ true, false, true, false },
         else => .{ false, false, false, false },
@@ -66,10 +69,10 @@ const Plugs = [4]bool;
 fn get_plugs(tile: u8) Plugs {
     return switch (tile) {
         // Plugs
-        149 => .{ true, false, false, false },
-        150 => .{ false, false, true, false },
-        151 => .{ false, true, false, false },
-        152 => .{ false, false, false, true },
+        150 => .{ true, false, false, false },
+        151 => .{ false, false, true, false },
+        152 => .{ false, true, false, false },
+        153 => .{ false, false, false, true },
         // Cross
         146 => .{ true, true, true, true },
         else => .{ false, false, false, false },
@@ -103,11 +106,16 @@ fn dir(s: Side) Cell {
     };
 }
 
-pub fn get_cell(c: Cell) ?u8 {
+pub fn get_cell(this: @This(), c: Cell) ?u8 {
     if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return null;
     const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
-    return if (assets.conduit[i] != 0) assets.conduit[i] - 1 else null;
-    // return assets.conduit[i];
+    return if (this.cells[i].tile != 0) this.cells[i].tile - 1 else null;
+}
+
+pub fn set_cell(this: *@This(), c: Cell, tile: u8) void {
+    if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return;
+    const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
+    this.cells[i].tile = tile + 1;
 }
 
 fn index2cell(i: usize) Cell {
@@ -119,18 +127,26 @@ fn cell2index(c: Cell) ?usize {
     return @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
 }
 
-const CellState = bool;
+const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
 const CellMap = [MAXCELLS]CellState; // std.AutoHashMap(Cell, CellState);
 
 offset: Cell,
 cells: CellMap,
+bridges: std.BoundedArray([2]Cell, 10),
 
-pub fn init() @This() {
-    return @This(){
-        .offset = Cell{ 0, 0 },
-        .cells = [1]CellState{false} ** 400,
+pub fn init(offset: Cell, map: []const u8) @This() {
+    var this = @This(){
+        .offset = offset,
+        .cells = undefined,
+        .bridges = std.BoundedArray([2]Cell, 10).init(0) catch unreachable,
     };
+    // TODO: copy only part of a map
+    for (map) |tile, i| {
+        this.cells[i].enabled = false;
+        this.cells[i].tile = tile;
+    }
+    return this;
 }
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
@@ -139,7 +155,30 @@ pub fn indexOf(this: @This(), cell: Cell) ?usize {
 
 pub fn enable(this: *@This(), cell: Cell) void {
     if (this.indexOf(cell)) |c| {
-        this.cells[c] = true;
+        this.cells[c].enabled = true;
+    }
+}
+
+pub fn bridge(this: *@This(), cells: [2]Cell) void {
+    if (this.indexOf(cells[0])) |_| {
+        if (this.indexOf(cells[1])) |_| {
+            this.bridges.append(cells) catch unreachable;
+        }
+    }
+}
+
+pub fn enabled(this: @This(), cell: Cell) bool {
+    if (this.indexOf(cell)) |c| {
+        return this.cells[c].enabled;
+    }
+    return false;
+}
+
+pub fn toggle(this: *@This(), cell: Cell) void {
+    if (this.get_cell(cell)) |tile| {
+        if (is_switch(tile)) {
+            this.set_cell(cell, toggle_switch(tile));
+        }
     }
 }
 
@@ -165,7 +204,7 @@ pub fn fill(this: *@This(), root: Cell) void {
     q.insert(root);
     while (q.remove()) |cell| {
         const index = this.indexOf(cell) orelse continue;
-        const tile = get_cell(cell) orelse continue;
+        const tile = this.get_cell(cell) orelse continue;
         if (visited.isSet(index)) continue;
         visited.set(index);
         this.enable(cell);
@@ -173,8 +212,23 @@ pub fn fill(this: *@This(), root: Cell) void {
             if (!conductor) continue;
             const s = @intToEnum(Side, i);
             const delta = dir(s);
-            // w4.trace("side {} ({}), delta {}", .{ s, i, delta });
             q.insert(cell + delta);
         }
+        if (is_plug(tile)) {
+            for (this.bridges.constSlice()) |b| {
+                if (@reduce(.And, b[0] == cell)) {
+                    q.insert(b[1]);
+                } else if (@reduce(.And, b[1] == cell)) {
+                    q.insert(b[0]);
+                }
+            }
+        }
     }
+}
+
+pub fn clear(this: *@This()) void {
+    for (this.cells) |*cell| {
+        cell.enabled = false;
+    }
+    this.bridges.resize(0) catch unreachable;
 }

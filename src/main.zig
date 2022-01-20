@@ -115,7 +115,7 @@ const KB = 1024;
 var heap: [8 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
-var circuit = Circuit.init();
+var circuit = Circuit.init(Vec2{ 0, 0 }, &assets.conduit);
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -191,12 +191,28 @@ export fn update() void {
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);
     world.processWithID(1, &.{ .pos, .control }, wireManipulationProcess);
+    world.processWithID(1, &.{ .pos, .control }, circuitManipulationProcess);
     world.process(1, &.{.wire}, wirePhysicsProcess);
     world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
     world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
+
+    circuit.clear();
+    const q = World.Query.require(&.{.wire});
+    var wireIter = world.iter(q);
+    while (wireIter.next()) |wireID| {
+        const e = world.get(wireID);
+        const nodes = e.wire.?.nodes.constSlice();
+        const cellBegin = world2cell(nodes[0].pos);
+        const cellEnd = world2cell(nodes[nodes.len - 1].pos);
+
+        circuit.bridge(.{ cellBegin, cellEnd });
+    }
+    for (assets.sources) |source| {
+        circuit.fill(source);
+    }
 
     w4.DRAW_COLORS.* = 0x0210;
     for (assets.solid) |tilePlus, i| {
@@ -206,9 +222,10 @@ export fn update() void {
         w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
     }
 
-    for (assets.conduit) |tilePlus, i| {
+    for (circuit.cells) |cell, i| {
+        const tilePlus = cell.tile;
         if (tilePlus == 0) continue;
-        if (circuit.cells[i]) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
+        if (circuit.cells[i].enabled) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
         const tile = tilePlus - 1;
         const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
         const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
@@ -241,6 +258,10 @@ export fn update() void {
     time += 1;
 }
 
+fn world2cell(vec: Vec2f) Vec2 {
+    return vec2ftovec2(vec / @splat(2, @as(f32, 8)));
+}
+
 /// pos should be in tile coordinates, not world coordinates
 fn get_conduit(vec: Vec2) ?u8 {
     const x = vec[0];
@@ -248,6 +269,28 @@ fn get_conduit(vec: Vec2) ?u8 {
     if (x < 0 or x > 19 or y < 0 or y > 19) return null;
     const i = x + y * 20;
     return assets.conduit[@intCast(u32, i)];
+}
+
+fn circuitManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void {
+    _ = id;
+    var offset = switch (control.facing) {
+        .left => Vec2f{ -6, -4 },
+        .right => Vec2f{ 6, -4 },
+        .up => Vec2f{ 0, -12 },
+        .down => Vec2f{ 0, 4 },
+    };
+    if (control.grabbing == null) {
+        const mapPos = vec2ftovec2(pos.pos + offset);
+        const cell = @divTrunc(mapPos, @splat(2, @as(i32, 8)));
+        if (circuit.get_cell(cell)) |tile| {
+            if (Circuit.is_switch(tile)) {
+                indicator = .{ .t = .plug, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
+                if (input.btnp(.one, .two)) {
+                    circuit.toggle(cell);
+                }
+            }
+        }
+    }
 }
 
 fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void {
@@ -277,7 +320,7 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         }
 
         var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
-        if (Circuit.is_plug(Circuit.get_cell(mapPos) orelse 0)) {
+        if (Circuit.is_plug(circuit.get_cell(mapPos) orelse 0)) {
             indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
             if (input.btnp(.one, .two)) {
                 e.wire.?.nodes.slice()[details.which].pinned = true;
