@@ -5,7 +5,7 @@ fn is_circuit(tile: u8) bool {
     return is_plug(tile) or is_conduit(tile) or is_switch(tile);
 }
 
-fn is_plug(tile: u8) bool {
+pub fn is_plug(tile: u8) bool {
     return (tile >= 149 and tile <= 153) or tile == 147;
 }
 
@@ -103,39 +103,78 @@ fn dir(s: Side) Cell {
     };
 }
 
-fn get_cell(c: Cell) ?u8 {
-    if (c[0] < 0 or c[0] >= 20 or c[1] >= 20 or c[1] < 0) return null;
-    const i = @intCast(usize, (c[0] % 20) + (c[1] * 20));
-    return assets.conduit[i];
+pub fn get_cell(c: Cell) ?u8 {
+    if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return null;
+    const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
+    return if (assets.conduit[i] != 0) assets.conduit[i] - 1 else null;
+    // return assets.conduit[i];
 }
 
 fn index2cell(i: usize) Cell {
     return Vec2{ i % 20, @divTrunc(i, 20) };
 }
 
-pub const Circuit = struct {
-    switches: std.BoundedArray(8, cell),
-    plugs: std.BoundedArray(8, cell),
-    enabled: bool = false,
-};
+fn cell2index(c: Cell) ?usize {
+    if (c[0] < 0 or c[0] >= 20 or c[1] >= 20 or c[1] < 0) return null;
+    return @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
+}
 
-pub fn createCircuitChunks() void {
-    var items = std.BoundedArray(100, u8).init(0);
-    for (assets.conduit) |tile, i| {
-        if (is_circuit(tile)) items.append(index2cell(i));
-    }
-    for (items.slice()) |cell| {
-        // TODO: iterate over the cells and create components
+const CellState = bool;
+const MAXCELLS = 400;
+const CellMap = [MAXCELLS]CellState; // std.AutoHashMap(Cell, CellState);
+
+offset: Cell,
+cells: CellMap,
+
+pub fn init() @This() {
+    return @This(){
+        .offset = Cell{ 0, 0 },
+        .cells = [1]CellState{false} ** 400,
+    };
+}
+
+pub fn indexOf(this: @This(), cell: Cell) ?usize {
+    return cell2index(cell - this.offset);
+}
+
+pub fn enable(this: *@This(), cell: Cell) void {
+    if (this.indexOf(cell)) |c| {
+        this.cells[c] = true;
     }
 }
 
-var circuits = std.BoundedArray(20, Circuit).init(0);
-pub fn toggleSwitch(cell: Cell) void {
-    for (circuits) |circuit| {
-        for (circuit.switches) |switchCell| {
-            if (switchCell == cell) {
-                // TODO: do a search and disable circuit if a source is not found
-            }
+const Queue = struct {
+    data: std.BoundedArray(Cell, MAXCELLS),
+    pub fn init() @This() {
+        return @This(){
+            .data = std.BoundedArray(Cell, MAXCELLS).init(0) catch unreachable,
+        };
+    }
+    pub fn insert(this: *@This(), c: Cell) void {
+        this.data.insert(0, c) catch unreachable;
+    }
+    pub fn remove(this: *@This()) ?Cell {
+        return this.data.popOrNull();
+    }
+};
+
+const w4 = @import("wasm4.zig");
+pub fn fill(this: *@This(), root: Cell) void {
+    var visited = std.StaticBitSet(MAXCELLS).initEmpty();
+    var q = Queue.init();
+    q.insert(root);
+    while (q.remove()) |cell| {
+        const index = this.indexOf(cell) orelse continue;
+        const tile = get_cell(cell) orelse continue;
+        if (visited.isSet(index)) continue;
+        visited.set(index);
+        this.enable(cell);
+        for (get_inputs(tile)) |conductor, i| {
+            if (!conductor) continue;
+            const s = @intToEnum(Side, i);
+            const delta = dir(s);
+            // w4.trace("side {} ({}), delta {}", .{ s, i, delta });
+            q.insert(cell + delta);
         }
     }
 }

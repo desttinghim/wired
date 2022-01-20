@@ -3,6 +3,7 @@ const w4 = @import("wasm4.zig");
 const ecs = @import("ecs.zig");
 const assets = @import("assets");
 const input = @import("input.zig");
+const Circuit = @import("circuit.zig");
 
 const Vec2 = std.meta.Vector(2, i32);
 const Vec2f = std.meta.Vector(2, f32);
@@ -114,6 +115,7 @@ const KB = 1024;
 var heap: [8 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
+var circuit = Circuit.init();
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -173,6 +175,10 @@ export fn start() void {
             .wire = w,
         }) catch showErr("Adding wire entity");
     }
+
+    for (assets.sources) |source| {
+        circuit.fill(source);
+    }
 }
 
 var indicator: ?struct { pos: Vec2, t: enum { wire, plug } } = null;
@@ -198,12 +204,15 @@ export fn update() void {
         const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
         const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
         w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
-        const conduitRaw = assets.conduit[i];
-        if (conduitRaw != 0) {
-            const conduittile = conduitRaw - 1;
-            const tconduit = w4.Vec2{ @intCast(i32, (conduittile % 16) * 8), @intCast(i32, (conduittile / 16) * 8) };
-            w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, tconduit, 128, .{ .bpp = .b2 });
-        }
+    }
+
+    for (assets.conduit) |tilePlus, i| {
+        if (tilePlus == 0) continue;
+        if (circuit.cells[i]) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
+        const tile = tilePlus - 1;
+        const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
+        const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
+        w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
     }
 
     world.process(1, &.{.wire}, wireDrawProcess);
@@ -230,10 +239,6 @@ export fn update() void {
     indicator = null;
     input.update();
     time += 1;
-}
-
-fn is_plug(tile: u8) bool {
-    return (tile >= 149 and tile <= 153) or tile == 147;
 }
 
 /// pos should be in tile coordinates, not world coordinates
@@ -272,7 +277,7 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         }
 
         var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
-        if (is_plug(get_conduit(mapPos) orelse 0)) {
+        if (Circuit.is_plug(Circuit.get_cell(mapPos) orelse 0)) {
             indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
             if (input.btnp(.one, .two)) {
                 e.wire.?.nodes.slice()[details.which].pinned = true;
@@ -286,7 +291,7 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         }
         world.set(details.id, e);
     } else {
-        const interactDistance = 8;
+        const interactDistance = 4;
         var minDistance: f32 = interactDistance;
         var wireIter = world.iter(World.Query.require(&.{.wire}));
         var interactWireID: ?usize = null;

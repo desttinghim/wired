@@ -336,21 +336,21 @@ pub extern fn diskw(src: [*]const u8, size: u32) u32;
 /// Prints a message to the debug console.
 /// Disabled in release builds.
 pub fn trace(comptime fmt: []const u8, args: anytype) void {
-    if (@import("builtin").mode != .Debug) @compileError("trace not allowed in release builds.");
-
-    // stack size is [8192]u8
-    var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
-    writer.print(fmt, args) catch {
-        const err_msg = switch (@import("builtin").mode) {
-            .Debug => "[trace err] " ++ fmt,
-            else => "[trace err]", // max 100 bytes in trace message.
+    if (@import("builtin").mode == .Debug) {
+        // stack size is [8192]u8
+        var buffer: [100]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buffer);
+        const writer = fbs.writer();
+        writer.print(fmt, args) catch {
+            const err_msg = switch (@import("builtin").mode) {
+                .Debug => "[trace err] " ++ fmt,
+                else => "[trace err]", // max 100 bytes in trace message.
+            };
+            return traceUtf8(err_msg, err_msg.len);
         };
-        return traceUtf8(err_msg, err_msg.len);
-    };
 
-    traceUtf8(&buffer, fbs.pos);
+        traceUtf8(&buffer, fbs.pos);
+    }
 }
 extern fn traceUtf8(str_ptr: [*]const u8, str_len: usize) void;
 
