@@ -163,7 +163,6 @@ export fn start() void {
         var nodes = std.BoundedArray(Pos, 32).init(0) catch showErr("Nodes");
         var i: usize = 0;
         const divisions = @floatToInt(usize, vec_length(size) / 6);
-        w4.trace("{d:.0} long, {} divisions", .{ vec_length(size), divisions });
         while (i <= divisions) : (i += 1) {
             const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, divisions));
             nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
@@ -199,19 +198,21 @@ export fn update() void {
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
     world.process(1, &.{ .pos, .sprite }, drawProcess);
 
-    circuit.clear();
-    const q = World.Query.require(&.{.wire});
-    var wireIter = world.iter(q);
-    while (wireIter.next()) |wireID| {
-        const e = world.get(wireID);
-        const nodes = e.wire.?.nodes.constSlice();
-        const cellBegin = world2cell(nodes[0].pos);
-        const cellEnd = world2cell(nodes[nodes.len - 1].pos);
+    {
+        circuit.clear();
+        const q = World.Query.require(&.{.wire});
+        var wireIter = world.iter(q);
+        while (wireIter.next()) |wireID| {
+            const e = world.get(wireID);
+            const nodes = e.wire.?.nodes.constSlice();
+            const cellBegin = world2cell(nodes[0].pos);
+            const cellEnd = world2cell(nodes[nodes.len - 1].pos);
 
-        circuit.bridge(.{ cellBegin, cellEnd });
-    }
-    for (assets.sources) |source| {
-        circuit.fill(source);
+            circuit.bridge(.{ cellBegin, cellEnd });
+        }
+        for (assets.sources) |source| {
+            circuit.fill(source);
+        }
     }
 
     w4.DRAW_COLORS.* = 0x0210;
