@@ -71,7 +71,7 @@ var heap: [16 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
 var map: Map = undefined;
-var circuit = Circuit.init(Vec2{ 0, 0 }, &assets.conduit);
+var circuit: Circuit = undefined;
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -99,9 +99,17 @@ fn showErr(msg: []const u8) noreturn {
 }
 
 export fn start() void {
-    map = Map.init(Vec2{ 0, 0 }, &assets.solid, fba.allocator()) catch showErr("Couldn't init map");
+    circuit = Circuit.init();
+    map = Map.init(fba.allocator()) catch showErr("Init map");
+
+    const mapPos = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    circuit.load(mapPos, &assets.conduit, assets.conduit_size);
+    map.load(mapPos, &assets.solid, assets.solid_size);
+
+    w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
+
     _ = world.create(.{
-        .pos = Pos.init(Vec2f{ 100, 80 }),
+        .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 4 }),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },

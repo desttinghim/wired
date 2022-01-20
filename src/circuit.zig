@@ -137,18 +137,26 @@ offset: Cell,
 cells: CellMap,
 bridges: std.BoundedArray([2]Cell, 10),
 
-pub fn init(offset: Cell, map: []const u8) @This() {
+pub fn init() @This() {
     var this = @This(){
-        .offset = offset,
+        .offset = Cell{ 0, 0 },
         .cells = undefined,
         .bridges = std.BoundedArray([2]Cell, 10).init(0) catch unreachable,
     };
-    // TODO: copy only part of a map
-    for (map) |tile, i| {
-        this.cells[i].enabled = false;
-        this.cells[i].tile = tile;
-    }
     return this;
+}
+
+pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
+    this.offset = offset;
+    var y: usize = 0;
+    while (y < 20) : (y += 1) {
+        var x: usize = 0;
+        while (x < 20) : (x += 1) {
+            const i = x + y * 20;
+            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
+            this.cells[i].tile = map[a];
+        }
+    }
 }
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
@@ -200,7 +208,8 @@ const Queue = struct {
 };
 
 const w4 = @import("wasm4.zig");
-pub fn fill(this: *@This(), root: Cell) void {
+pub fn fill(this: *@This(), rootRaw: Cell) void {
+    const root = rootRaw - this.offset;
     var visited = std.StaticBitSet(MAXCELLS).initEmpty();
     var q = Queue.init();
     q.insert(root);

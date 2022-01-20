@@ -13,7 +13,7 @@ const width = 20;
 const height = 20;
 const tile_width = 8;
 const tile_height = 8;
-const tile_size = Vec2{ 8, 8 };
+pub const tile_size = Vec2{ 8, 8 };
 const tile_sizef = Vec2f{ 8, 8 };
 const tilemap_width = 16;
 const tilemap_height = 16;
@@ -23,23 +23,27 @@ alloc: std.mem.Allocator,
 tiles: []u8,
 offset: Cell,
 
-pub fn init(offset: Cell, map: []const u8, alloc: std.mem.Allocator) !@This() {
+pub fn init(alloc: std.mem.Allocator) !@This() {
     var tiles = try alloc.alloc(u8, MAXCELLS);
     var this = @This(){
         .alloc = alloc,
-        .offset = offset,
+        .offset = Cell{ 0, 0 },
         .tiles = tiles,
     };
+    return this;
+}
+
+pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
+    this.offset = offset;
     var y: usize = 0;
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
             const i = x + y * 20;
-            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * 20;
+            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
             this.tiles[i] = map[a];
         }
     }
-    return this;
 }
 
 pub fn deinit(this: @This()) void {
@@ -49,6 +53,7 @@ pub fn deinit(this: @This()) void {
 pub fn draw(this: @This()) void {
     w4.DRAW_COLORS.* = 0x0210;
     for (this.tiles) |tilePlus, i| {
+        if (tilePlus == 0) continue;
         const tile = tilePlus - 1;
         const t = Vec2{
             @intCast(i32, (tile % tilemap_width) * tile_width),
@@ -85,8 +90,7 @@ pub fn collide(this: @This(), rect: util.AABB) std.BoundedArray(util.AABB, 9) {
     while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
         var a: isize = @floatToInt(i32, top_left[1]);
         while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
-            var tile = this.getTile(i, a);
-            if (tile == null or tile.? != 1) {
+            if (this.isSolid(Cell{ i, a })) {
                 collisions.append(util.AABB{
                     .pos = Vec2f{
                         @intToFloat(f32, i * tile_width),
@@ -103,7 +107,7 @@ pub fn collide(this: @This(), rect: util.AABB) std.BoundedArray(util.AABB, 9) {
 
 pub fn isSolid(this: @This(), cell: Cell) bool {
     if (this.getTile(cell[0], cell[1])) |tile| {
-        return tile != 1;
+        return tile != 0;
     }
     return true;
 }

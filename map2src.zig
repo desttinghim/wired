@@ -20,7 +20,7 @@ const Object = struct {
     polyline: []Point = &.{},
     properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": enum { wire, source, door },
+    @"type": enum { wire, source, door, spawn },
     visible: bool = true,
     width: u64 = 0,
     x: f64 = 0,
@@ -44,6 +44,7 @@ const Layer = struct {
 
 const MapType = struct {
     compressionlevel: i64 = -1,
+    editorsettings: struct { chunksize: struct { height: usize = 0, width: usize = 0 } = .{} } = .{},
     height: u64 = 0,
     infinite: bool = false,
     layers: []Layer,
@@ -61,7 +62,7 @@ const MapType = struct {
 };
 
 const KB = 1024;
-var heap: [64 * KB]u8 = undefined;
+var heap: [128 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var alloc = fba.allocator();
 var verbose = true;
@@ -93,7 +94,7 @@ pub fn do() !void {
     while (try argsIter.next(alloc)) |arg| {
         defer alloc.free(arg);
         if (verbose) std.log.info("{s}", .{arg});
-        var filebuffer: [64 * KB]u8 = undefined;
+        var filebuffer: [32 * KB]u8 = undefined;
         var filecontents = try cwd.readFile(arg, &filebuffer);
 
         @setEvalBranchQuota(10000);
@@ -109,11 +110,15 @@ pub fn do() !void {
         try outlist.appendSlice("const Vec2 = std.meta.Vector(2,i32);\n");
         try outlist.appendSlice("const Wire = struct { p1: Vec2, p2: Vec2, a1: bool, a2: bool };\n");
 
-        var outbuffer: [4 * KB]u8 = undefined;
+        var outbuffer: [16 * KB]u8 = undefined;
         for (map.layers) |layer| {
             switch (layer.@"type") {
                 .tilelayer => {
-                    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const {s}: [{}]u8 = .{any};\n", .{ layer.name, layer.data.len, layer.data });
+                    var outcontent = try std.fmt.bufPrint(
+                        &outbuffer,
+                        "pub const {2s}_size: Vec2 = Vec2{{ {}, {} }};\npub const {s}: [{}]u8 = .{any};\n",
+                        .{ layer.width, layer.height, layer.name, layer.data.len, layer.data },
+                    );
                     _ = try outlist.appendSlice(outcontent);
                 },
                 .objectgroup => {
@@ -131,6 +136,7 @@ pub fn do() !void {
                             .wire => try wirelist.append(obj),
                             .door => try doorlist.append(obj),
                             .source => try sourcelist.append(obj),
+                            .spawn => try appendSpawn(&outlist, obj),
                         }
                     }
 
@@ -191,4 +197,17 @@ pub fn appendSources(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Obje
         try outlist.appendSlice(sourcef);
     }
     try outlist.appendSlice("};\n");
+}
+
+pub fn appendSpawn(outlist: *std.ArrayList(u8), spawn: Object) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(
+        &outbuffer,
+        "pub const spawn: Vec2 = Vec2{{ {}, {} }};\n",
+        .{
+            @floatToInt(i32, @divTrunc(spawn.x, 8)),
+            @floatToInt(i32, @divTrunc(spawn.y, 8)),
+        },
+    );
+    try outlist.appendSlice(outcontent);
 }
