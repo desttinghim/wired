@@ -115,7 +115,7 @@ const ParticleSystem = struct {
 
     pub fn draw(this: @This()) void {
         for (this.particles.constSlice()) |*part| {
-            w4.DRAW_COLORS.* = 0x0001;
+            w4.DRAW_COLORS.* = 0x0002;
             w4.oval(util.vec2fToVec2(part.pos.pos), Vec2{ 2, 2 });
         }
     }
@@ -230,10 +230,9 @@ var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever }, active: bool 
 var time: usize = 0;
 
 export fn update() void {
-    w4.DRAW_COLORS.* = 0x0004;
-    w4.rect(.{ 0, 0 }, .{ 160, 160 });
-
     {
+        // Doing this before clearing the screen since the stack
+        // reaches the screen during this block
         circuit.clear();
         const q = World.Query.require(&.{.wire});
         var wireIter = world.iter(q);
@@ -251,7 +250,7 @@ export fn update() void {
         var wireComponents = world.components.items(.wire);
         var enabledWires = circuit.enabledBridges();
         for (enabledWires.slice()) |wireID| {
-            var wire = wireComponents[wireID].?;
+            var wire = &wireComponents[wireID].?;
             wire.enabled = true;
             if (time % 60 == 0) {
                 if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
@@ -259,6 +258,8 @@ export fn update() void {
             }
         }
     }
+    w4.DRAW_COLORS.* = 0x0004;
+    w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);

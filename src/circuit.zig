@@ -131,18 +131,19 @@ fn cell2index(c: Cell) ?usize {
 
 const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
+const MAXBRIDGES = 10;
 const CellMap = [MAXCELLS]CellState;
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 
 offset: Cell,
 cells: CellMap,
-bridges: std.BoundedArray(BridgeState, 10),
+bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 
 pub fn init() @This() {
     var this = @This(){
         .offset = Cell{ 0, 0 },
         .cells = undefined,
-        .bridges = std.BoundedArray(BridgeState, 10).init(0) catch unreachable,
+        .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
     };
     return this;
 }
@@ -178,8 +179,8 @@ pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
     }
 }
 
-pub fn enabledBridges(this: @This()) std.BoundedArray(usize, 10) {
-    var items = std.BoundedArray(usize, 10).init(0) catch unreachable;
+pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
+    var items = std.BoundedArray(usize, MAXBRIDGES).init(0) catch unreachable;
     for (this.bridges.constSlice()) |b| {
         if (b.enabled) items.append(b.id) catch unreachable;
     }
