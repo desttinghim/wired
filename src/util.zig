@@ -4,6 +4,20 @@ pub const Vec2f = std.meta.Vector(2, f32);
 pub const Vec2 = std.meta.Vector(2, i32);
 pub const Cell = Vec2;
 
+pub const Dir = struct {
+    pub const up = Vec2{ 0, -1 };
+    pub const down = Vec2{ 0, 1 };
+    pub const left = Vec2{ -1, 0 };
+    pub const right = Vec2{ 1, 0 };
+};
+
+pub const DirF = struct {
+    pub const up = Vec2f{ 0, -1 };
+    pub const down = Vec2f{ 0, 1 };
+    pub const left = Vec2f{ -1, 0 };
+    pub const right = Vec2f{ 1, 0 };
+};
+
 pub fn distance(a: Vec2, b: Vec2) i32 {
     var subbed = a - b;
     subbed[0] = std.math.absInt(subbed[0]) catch unreachable;

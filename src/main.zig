@@ -155,6 +155,7 @@ var circuit: Circuit = undefined;
 var particles: ParticleSystem = undefined;
 var prng = std.rand.DefaultPrng.init(0);
 var random = prng.random();
+var player: ?usize = null;
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -193,7 +194,7 @@ export fn start() void {
 
     // w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
 
-    _ = world.create(.{
+    player = world.create(.{
         .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
@@ -289,6 +290,18 @@ export fn update() void {
     particles.update();
     particles.draw();
 
+    if (player) |p| {
+        const pos = util.world2cell(world.get(p).pos.?.pos);
+        const shouldHum = circuit.isEnabled(pos) or
+            circuit.isEnabled(pos + util.Dir.up) or
+            circuit.isEnabled(pos + util.Dir.down) or
+            circuit.isEnabled(pos + util.Dir.left) or
+            circuit.isEnabled(pos + util.Dir.right);
+        if (shouldHum) {
+            w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
+        }
+    }
+
     if (indicator) |details| {
         const pos = details.pos;
         const stage = @divTrunc((time % 60), 30);
@@ -299,7 +312,7 @@ export fn update() void {
         }
 
         if (details.active) {
-            w4.tone(.{ .start = 60, .end = 1 }, .{ .release = 30, .sustain = 0 }, 10, .{ .channel = .triangle });
+            w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 10, .{ .channel = .pulse1, .mode = .p50 });
             w4.DRAW_COLORS.* = 0x0020;
         } else {
             w4.DRAW_COLORS.* = 0x0030;
