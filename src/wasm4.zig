@@ -352,6 +352,9 @@ pub fn trace(comptime fmt: []const u8, args: anytype) void {
         traceUtf8(&buffer, fbs.pos);
     }
 }
+pub fn traceNoF(msg: []const u8) void {
+    traceUtf8(msg.ptr, msg.len);
+}
 extern fn traceUtf8(str_ptr: [*]const u8, str_len: usize) void;
 
 /// Use with caution, as there's no compile-time type checking.

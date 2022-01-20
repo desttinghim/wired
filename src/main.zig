@@ -20,6 +20,9 @@ const Pos = struct {
     pub fn init(pos: Vec2f) @This() {
         return @This(){ .pos = pos, .last = pos };
     }
+    pub fn initVel(pos: Vec2f, vel: Vec2f) @This() {
+        return @This(){ .pos = pos, .last = pos - vel };
+    }
 };
 const Control = struct {
     controller: enum { player },
@@ -51,7 +54,18 @@ const Kinematic = struct {
         return this.isFalling() and !approxEqAbs(f32, this.lastCol[0], 0, 0.01);
     }
 };
-const Wire = struct { nodes: std.BoundedArray(Pos, 32), enabled: bool = false };
+const Wire = struct {
+    nodes: std.BoundedArray(Pos, 32),
+    enabled: bool = false,
+
+    pub fn begin(this: *@This()) *Pos {
+        return &this.nodes.slice()[0];
+    }
+
+    pub fn end(this: *@This()) *Pos {
+        return &this.nodes.slice()[this.nodes.len - 1];
+    }
+};
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
 const Component = struct {
     pos: Pos,
@@ -65,6 +79,72 @@ const Component = struct {
 };
 const World = ecs.World(Component);
 
+const Particle = struct {
+    pos: Pos,
+    life: i32,
+    pub fn init(pos: Pos, life: i32) @This() {
+        return @This(){
+            .pos = pos,
+            .life = life,
+        };
+    }
+};
+
+const ParticleSystem = struct {
+    const MAXPARTICLES = 32;
+    particles: std.BoundedArray(Particle, MAXPARTICLES),
+    pub fn init() @This() {
+        return @This(){
+            .particles = std.BoundedArray(Particle, MAXPARTICLES).init(0) catch unreachable,
+        };
+    }
+
+    pub fn update(this: *@This()) void {
+        var physics = .{ .gravity = Vec2f{ 0, 0.1 }, .friction = Vec2f{ 0.1, 0.1 } };
+        var remove = std.BoundedArray(usize, MAXPARTICLES).init(0) catch unreachable;
+        for (this.particles.slice()) |*part, i| {
+            velocityProcess(1, &part.pos);
+            physicsProcess(1, &part.pos, &physics);
+            part.life -= 1;
+            if (part.life == 0) remove.append(i) catch unreachable;
+        }
+        while (remove.popOrNull()) |i| {
+            _ = this.particles.swapRemove(i);
+        }
+    }
+
+    pub fn draw(this: @This()) void {
+        for (this.particles.constSlice()) |*part| {
+            w4.DRAW_COLORS.* = 0x0001;
+            w4.oval(util.vec2fToVec2(part.pos.pos), Vec2{ 2, 2 });
+        }
+    }
+
+    pub fn createRandom(this: *@This(), pos: Vec2f) void {
+        if (this.particles.len == this.particles.capacity()) return;
+        const vel = Vec2f{ randRangeF(-1, 1), randRangeF(-2, 0) };
+        const posComp = Pos.initVel(pos, vel);
+        const life = randRange(10, 50);
+        const part = Particle.init(posComp, life);
+        this.particles.append(part) catch unreachable;
+    }
+
+    pub fn createNRandom(this: *@This(), pos: Vec2f, n: usize) void {
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            this.createRandom(pos);
+        }
+    }
+};
+
+fn randRange(min: i32, max: i32) i32 {
+    return random.intRangeLessThanBiased(i32, min, max);
+}
+
+fn randRangeF(min: f32, max: f32) f32 {
+    return min + (random.float(f32) * (max - min));
+}
+
 // Global vars
 const KB = 1024;
 var heap: [16 * KB]u8 = undefined;
@@ -72,6 +152,9 @@ var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
 var map: Map = undefined;
 var circuit: Circuit = undefined;
+var particles: ParticleSystem = undefined;
+var prng = std.rand.DefaultPrng.init(0);
+var random = prng.random();
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -94,11 +177,13 @@ const playerAnim = pac: {
 };
 
 fn showErr(msg: []const u8) noreturn {
-    w4.trace("{s}", .{msg});
+    w4.traceNoF(msg);
     unreachable;
 }
 
 export fn start() void {
+    particles = ParticleSystem.init();
+
     circuit = Circuit.init();
     map = Map.init(fba.allocator()) catch showErr("Init map");
 
@@ -106,7 +191,7 @@ export fn start() void {
     circuit.load(mapPos, &assets.conduit, assets.conduit_size);
     map.load(mapPos, &assets.solid, assets.solid_size);
 
-    w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
+    // w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
 
     _ = world.create(.{
         .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
@@ -166,7 +251,12 @@ export fn update() void {
         var wireComponents = world.components.items(.wire);
         var enabledWires = circuit.enabledBridges();
         for (enabledWires.slice()) |wireID| {
-            wireComponents[wireID].?.enabled = true;
+            var wire = wireComponents[wireID].?;
+            wire.enabled = true;
+            if (time % 60 == 0) {
+                if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
+                if (!wire.end().pinned) particles.createNRandom(wire.end().pos, 8);
+            }
         }
     }
 
@@ -194,6 +284,9 @@ export fn update() void {
     }
 
     world.process(1, &.{.wire}, wireDrawProcess);
+
+    particles.update();
+    particles.draw();
 
     if (indicator) |details| {
         const pos = details.pos;
