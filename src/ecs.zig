@@ -5,7 +5,7 @@ const Tuple = std.meta.Tuple;
 pub fn World(comptime ComponentBase: type) type {
     // Build a component type at comptime based off of ComponentBase. It makes all the fields
     // nullable so they are easy to pull out of the store.
-    const Component = componentConstructor: {
+    const ComponentCon = componentConstructor: {
         var fields = std.meta.fields(ComponentBase);
         var newFields: [fields.len]std.builtin.TypeInfo.StructField = undefined;
         inline for (fields) |field, i| {
@@ -30,6 +30,7 @@ pub fn World(comptime ComponentBase: type) type {
         components: ComponentPool,
         alloc: std.mem.Allocator,
         pub const Query = ComponentQuery;
+        pub const Component = ComponentCon;
 
         const ComponentPool = std.MultiArrayList(Component);
         const ComponentEnum = std.meta.FieldEnum(Component);

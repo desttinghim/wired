@@ -10,47 +10,7 @@ const Map = @import("map.zig");
 const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
 const AABB = util.AABB;
-const Anim = struct {
-    time: usize = 0,
-    currentOp: usize = 0,
-    delayUntil: usize = 0,
-    anim: []const Ops,
-    stopped: bool = false,
-
-    pub const Ops = union(enum) { Index: usize, Wait: usize, Stop };
-
-    pub fn play(this: *@This(), anim: []const Ops) void {
-        if (this.anim.ptr == anim.ptr) return;
-        this.anim = anim;
-        this.stopped = false;
-        this.currentOp = 0;
-    }
-
-    pub fn update(this: *@This(), out: *usize) void {
-        this.time += 1;
-        while (!this.stopped and this.anim.len > 0 and this.time >= this.delayUntil) {
-            switch (this.anim[this.currentOp]) {
-                .Index => |index| out.* = index,
-                .Wait => |wait| this.delayUntil = this.time + wait,
-                .Stop => this.stopped = true,
-            }
-            this.currentOp = (this.currentOp + 1) % this.anim.len;
-        }
-    }
-
-    pub fn simple(rate: usize, comptime arr: []const usize) [arr.len * 2]Ops {
-        var anim: [arr.len * 2]Ops = undefined;
-        inline for (arr) |item, i| {
-            anim[i * 2] = Ops{ .Index = item };
-            anim[i * 2 + 1] = Ops{ .Wait = rate };
-        }
-        return anim;
-    }
-
-    pub fn frame(comptime index: usize) [2]Ops {
-        return [_]Ops{ .{ .Index = index }, .Stop };
-    }
-};
+const Anim = @import("anim.zig");
 
 // Components
 const Pos = struct {
@@ -171,13 +131,9 @@ export fn start() void {
             .wire = w,
         }) catch showErr("Adding wire entity");
     }
-
-    for (assets.sources) |source| {
-        circuit.fill(source);
-    }
 }
 
-var indicator: ?struct { pos: Vec2, t: enum { wire, plug } } = null;
+var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever } } = null;
 var time: usize = 0;
 
 export fn update() void {
@@ -186,8 +142,8 @@ export fn update() void {
 
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);
-    world.processWithID(1, &.{ .pos, .control }, wireManipulationProcess);
-    world.processWithID(1, &.{ .pos, .control }, circuitManipulationProcess);
+    world.process(1, &.{ .pos, .control }, wireManipulationProcess);
+    world.process(1, &.{ .pos, .control }, circuitManipulationProcess);
     world.process(1, &.{.wire}, wirePhysicsProcess);
     world.process(1, &.{ .pos, .control, .physics, .kinematic }, controlProcess);
     world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
@@ -202,8 +158,8 @@ export fn update() void {
         while (wireIter.next()) |wireID| {
             const e = world.get(wireID);
             const nodes = e.wire.?.nodes.constSlice();
-            const cellBegin = world2cell(nodes[0].pos);
-            const cellEnd = world2cell(nodes[nodes.len - 1].pos);
+            const cellBegin = util.world2cell(nodes[0].pos);
+            const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
 
             circuit.bridge(.{ cellBegin, cellEnd });
         }
@@ -242,6 +198,7 @@ export fn update() void {
         switch (details.t) {
             .wire => w4.oval(pos - half, size),
             .plug => w4.rect(pos - half, size),
+            .lever => w4.rect(pos - half, size),
         }
     }
 
@@ -250,21 +207,7 @@ export fn update() void {
     time += 1;
 }
 
-fn world2cell(vec: Vec2f) Vec2 {
-    return vec2ftovec2(vec / @splat(2, @as(f32, 8)));
-}
-
-/// pos should be in tile coordinates, not world coordinates
-fn get_conduit(vec: Vec2) ?u8 {
-    const x = vec[0];
-    const y = vec[1];
-    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
-    const i = x + y * 20;
-    return assets.conduit[@intCast(u32, i)];
-}
-
-fn circuitManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void {
-    _ = id;
+fn circuitManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
     var offset = switch (control.facing) {
         .left => Vec2f{ -6, -4 },
         .right => Vec2f{ 6, -4 },
@@ -276,7 +219,7 @@ fn circuitManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) v
         const cell = @divTrunc(mapPos, @splat(2, @as(i32, 8)));
         if (circuit.get_cell(cell)) |tile| {
             if (Circuit.is_switch(tile)) {
-                indicator = .{ .t = .plug, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
+                indicator = .{ .t = .lever, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
                 if (input.btnp(.one, .two)) {
                     circuit.toggle(cell);
                 }
@@ -285,18 +228,20 @@ fn circuitManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) v
     }
 }
 
-fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void {
+fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
     var offset = switch (control.facing) {
         .left => Vec2f{ -6, -4 },
         .right => Vec2f{ 6, -4 },
         .up => Vec2f{ 0, -12 },
         .down => Vec2f{ 0, 4 },
     };
+    var offsetPos = pos.pos + offset;
+    var entity: World.Component = undefined;
+    var mapPos = util.world2cell(offsetPos);
+
     if (control.grabbing) |details| {
-        _ = details;
-        _ = id;
-        var e = world.get(details.id);
-        var wire = &e.wire.?;
+        entity = world.get(details.id);
+        var wire = &entity.wire.?;
         var nodes = wire.nodes.slice();
 
         var maxLength = wireMaxLength(wire);
@@ -305,26 +250,25 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         if (length > maxLength * 1.5) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
-            world.set(details.id, e);
+            world.set(details.id, entity);
             return;
         } else {
             nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
         }
 
-        var mapPos = vec2ftovec2((pos.pos + offset) / @splat(2, @as(f32, 8)));
         if (Circuit.is_plug(circuit.get_cell(mapPos) orelse 0)) {
             indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
             if (input.btnp(.one, .two)) {
-                e.wire.?.nodes.slice()[details.which].pinned = true;
-                e.wire.?.nodes.slice()[details.which].pos = vec2tovec2f(indicator.?.pos);
-                e.wire.?.nodes.slice()[details.which].last = vec2tovec2f(indicator.?.pos);
+                nodes[details.which].pinned = true;
+                nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
+                nodes[details.which].last = vec2tovec2f(indicator.?.pos);
                 control.grabbing = null;
             }
         } else if (input.btnp(.one, .two)) {
-            e.wire.?.nodes.slice()[details.which].pinned = false;
+            nodes[details.which].pinned = false;
             control.grabbing = null;
         }
-        world.set(details.id, e);
+        world.set(details.id, entity);
     } else {
         const interactDistance = 4;
         var minDistance: f32 = interactDistance;
@@ -333,19 +277,19 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
         var interactWireID: ?usize = null;
         var which: usize = 0;
         while (wireIter.next()) |entityID| {
-            const entity = world.get(entityID);
+            entity = world.get(entityID);
             const wire = entity.wire.?;
             const nodes = wire.nodes.constSlice();
             const begin = nodes[0].pos;
             const end = nodes[wire.nodes.len - 1].pos;
-            var dist = util.distancef(begin, pos.pos + offset);
+            var dist = util.distancef(begin, offsetPos);
             if (dist < minDistance) {
                 minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(begin) };
                 interactWireID = entityID;
                 which = 0;
             }
-            dist = util.distancef(end, pos.pos + offset);
+            dist = util.distancef(end, offsetPos);
             if (dist < minDistance) {
                 minDistance = dist;
                 indicator = .{ .t = .wire, .pos = vec2ftovec2(end) };
@@ -354,11 +298,9 @@ fn wireManipulationProcess(_: f32, id: usize, pos: *Pos, control: *Control) void
             }
         }
         if (interactWireID) |wireID| {
-            _ = wireID;
-            var entity = world.get(wireID);
+            entity = world.get(wireID);
             if (input.btnp(.one, .two)) {
                 control.grabbing = .{ .id = wireID, .which = which };
-                // entity.wire.?.nodes.slice()[which].pinned = true;
             }
             world.set(wireID, entity);
         }
@@ -420,15 +362,6 @@ fn wireLength(wire: *Wire) f32 {
         length += util.distancef(nodes[i - 1].pos, nodes[i].pos);
     }
     return length;
-}
-
-fn tension(prevNode: *Pos, node: *Pos) f32 {
-    var dist = util.distancef(node.pos, prevNode.pos);
-    var difference: f32 = 0;
-    if (dist > 0) {
-        difference = (@minimum(dist, wireSegmentMaxLength) - dist) / dist;
-    }
-    return difference;
 }
 
 fn constrainNodes(prevNode: *Pos, node: *Pos) void {
@@ -518,14 +451,6 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
     if (input.btn(.one, .down)) control.facing = .down;
     var move = delta * @splat(2, @as(f32, 0.2));
     pos.pos += move;
-}
-
-fn getTile(cell: Vec2) ?u8 {
-    const x = cell[0];
-    const y = cell[1];
-    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
-    const i = x + y * 20;
-    return assets.solid[@intCast(u32, i)];
 }
 
 fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
