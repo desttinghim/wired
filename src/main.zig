@@ -6,6 +6,7 @@ const input = @import("input.zig");
 const util = @import("util.zig");
 const Circuit = @import("circuit.zig");
 const Map = @import("map.zig");
+const Music = @import("music.zig");
 
 const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
@@ -147,7 +148,7 @@ fn randRangeF(min: f32, max: f32) f32 {
 
 // Global vars
 const KB = 1024;
-var heap: [16 * KB]u8 = undefined;
+var heap: [10 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var world: World = World.init(fba.allocator());
 var map: Map = undefined;
@@ -156,6 +157,7 @@ var particles: ParticleSystem = undefined;
 var prng = std.rand.DefaultPrng.init(0);
 var random = prng.random();
 var player: ?usize = null;
+var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 
 const anim_store = struct {
     const stand = Anim.frame(0);
@@ -176,6 +178,8 @@ const playerAnim = pac: {
     animArr.append(&anim_store.wallSlide) catch unreachable;
     break :pac animArr.slice();
 };
+
+const WireQuery = World.Query.require(&.{.wire});
 
 fn showErr(msg: []const u8) noreturn {
     w4.traceNoF(msg);
@@ -235,8 +239,7 @@ export fn update() void {
         // Doing this before clearing the screen since the stack
         // reaches the screen during this block
         circuit.clear();
-        const q = World.Query.require(&.{.wire});
-        var wireIter = world.iter(q);
+        var wireIter = world.iter(WireQuery);
         while (wireIter.next()) |wireID| {
             const e = world.get(wireID);
             const nodes = e.wire.?.nodes.constSlice();
@@ -259,8 +262,6 @@ export fn update() void {
             }
         }
     }
-    w4.DRAW_COLORS.* = 0x0004;
-    w4.rect(.{ 0, 0 }, .{ 160, 160 });
 
     world.process(1, &.{.pos}, velocityProcess);
     world.process(1, &.{ .pos, .physics }, physicsProcess);
@@ -271,8 +272,12 @@ export fn update() void {
     world.process(1, &.{ .pos, .kinematic }, kinematicProcess);
     world.process(1, &.{ .sprite, .staticAnim }, staticAnimProcess);
     world.process(1, &.{ .sprite, .controlAnim, .control }, controlAnimProcess);
-    world.process(1, &.{ .pos, .sprite }, drawProcess);
+    particles.update();
 
+    // Drawing
+    w4.DRAW_COLORS.* = 0x0004;
+    w4.rect(.{ 0, 0 }, .{ 160, 160 });
+    world.process(1, &.{ .pos, .sprite }, drawProcess);
     map.draw();
 
     for (circuit.cells) |cell, i| {
@@ -287,7 +292,6 @@ export fn update() void {
 
     world.process(1, &.{.wire}, wireDrawProcess);
 
-    particles.update();
     particles.draw();
 
     if (player) |p| {
@@ -298,7 +302,10 @@ export fn update() void {
             circuit.isEnabled(pos + util.Dir.left) or
             circuit.isEnabled(pos + util.Dir.right);
         if (shouldHum) {
-            w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
+            // w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
+            music.newIntensity = .active;
+        } else {
+            music.newIntensity = .calm;
         }
     }
 
@@ -312,7 +319,8 @@ export fn update() void {
         }
 
         if (details.active) {
-            w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 10, .{ .channel = .pulse1, .mode = .p50 });
+            // w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 10, .{ .channel = .pulse1, .mode = .p50 });
+            music.newIntensity = .danger;
             w4.DRAW_COLORS.* = 0x0020;
         } else {
             w4.DRAW_COLORS.* = 0x0030;
@@ -323,6 +331,15 @@ export fn update() void {
             .plug => w4.rect(pos - half, size),
             .lever => w4.rect(pos - half, size),
         }
+    }
+
+    // Music
+    const musicCommand = music.getNext(1);
+    if (musicCommand.freq) |freq| {
+        w4.tone(.{ .start = freq }, .{ .sustain = 2, .release = 2 }, 10, .{ .channel = .pulse2, .mode = .p50 });
+    }
+    if (musicCommand.drum) |drum| {
+        w4.tone(drum.freq, drum.duration, 10, .{ .channel = .triangle });
     }
 
     indicator = null;
@@ -396,8 +413,7 @@ fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
     } else {
         const interactDistance = 4;
         var minDistance: f32 = interactDistance;
-        const q = World.Query.require(&.{.wire});
-        var wireIter = world.iter(q);
+        var wireIter = world.iter(WireQuery);
         var interactWireID: ?usize = null;
         var which: usize = 0;
         while (wireIter.next()) |entityID| {
