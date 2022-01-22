@@ -160,11 +160,11 @@ var player: ?usize = null;
 var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 
 const anim_store = struct {
-    const stand = Anim.frame(0);
-    const walk = Anim.simple(4, &[_]usize{ 1, 2, 3, 4 });
-    const jump = Anim.frame(5);
-    const fall = Anim.frame(6);
-    const wallSlide = Anim.frame(7);
+    const stand = Anim.frame(8);
+    const walk = Anim.simple(4, &[_]usize{ 9, 10, 11, 12 });
+    const jump = Anim.frame(13);
+    const fall = Anim.frame(14);
+    const wallSlide = Anim.frame(15);
 };
 
 const AnimData = []const Anim.Ops;
@@ -201,7 +201,7 @@ export fn start() void {
     player = world.create(.{
         .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
         .control = .{ .controller = .player, .state = .stand },
-        .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 0, .flags = .{ .bpp = .b1 } },
+        .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 8, .flags = .{ .bpp = .b2 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
         .controlAnim = ControlAnim{
             .anims = playerAnim,
@@ -248,8 +248,16 @@ export fn update() void {
 
             circuit.bridge(.{ cellBegin, cellEnd }, wireID);
         }
+        var count: usize = 0;
         for (assets.sources) |source| {
-            circuit.fill(source);
+            count += circuit.fill(source);
+        }
+        if (count < 30) {
+            music.newIntensity = .calm;
+        } else if (count < 60) {
+            music.newIntensity = .active;
+        } else {
+            music.newIntensity = .danger;
         }
         var wireComponents = world.components.items(.wire);
         var enabledWires = circuit.enabledBridges();
@@ -302,10 +310,10 @@ export fn update() void {
             circuit.isEnabled(pos + util.Dir.left) or
             circuit.isEnabled(pos + util.Dir.right);
         if (shouldHum) {
-            // w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
-            music.newIntensity = .active;
+            w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
+            // music.newIntensity = .active;
         } else {
-            music.newIntensity = .calm;
+            // music.newIntensity = .calm;
         }
     }
 
@@ -320,7 +328,7 @@ export fn update() void {
 
         if (details.active) {
             // w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 10, .{ .channel = .pulse1, .mode = .p50 });
-            music.newIntensity = .danger;
+            // music.newIntensity = .danger;
             w4.DRAW_COLORS.* = 0x0020;
         } else {
             w4.DRAW_COLORS.* = 0x0030;
@@ -335,11 +343,8 @@ export fn update() void {
 
     // Music
     const musicCommand = music.getNext(1);
-    if (musicCommand.freq) |freq| {
-        w4.tone(.{ .start = freq }, .{ .sustain = 2, .release = 2 }, 10, .{ .channel = .pulse2, .mode = .p50 });
-    }
-    if (musicCommand.drum) |drum| {
-        w4.tone(drum.freq, drum.duration, 10, .{ .channel = .triangle });
+    for (musicCommand.constSlice()) |sfx| {
+        w4.tone(sfx.freq, sfx.duration, sfx.volume, sfx.flags);
     }
 
     indicator = null;
@@ -540,8 +545,9 @@ fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
     w4.DRAW_COLORS.* = 0x0010;
     const fpos = pos.pos + sprite.offset;
     const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) };
-    const t = w4.Vec2{ @intCast(i32, (sprite.index * 8) % 128), @intCast(i32, (sprite.index * 8) / 128) };
-    w4.blitSub(&assets.sprites, ipos, sprite.size, t, 128, sprite.flags);
+    const index = sprite.index;
+    const t = w4.Vec2{ @intCast(i32, (index * 8) % 128), @intCast(i32, (index * 8) / 128) };
+    w4.blitSub(&assets.tiles, ipos, sprite.size, t, 128, sprite.flags);
 }
 
 fn staticAnimProcess(_: f32, sprite: *Sprite, anim: *StaticAnim) void {
@@ -556,6 +562,7 @@ fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Con
         .fall => 3,
         .wallSlide => 4,
     };
+    if (a != 0) music.walking = true else music.walking = false;
     sprite.flags.flip_x = (control.facing == .left);
     anim.state.play(anim.anims[a]);
     anim.state.update(&sprite.index);

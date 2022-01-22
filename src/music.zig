@@ -1,3 +1,4 @@
+const std = @import("std");
 const w4 = @import("wasm4.zig");
 
 const midiNote = [_]u16{
@@ -21,10 +22,14 @@ pub const Note = enum(usize) { C3 = 57, C4 = 69 };
 pub const Major = [8]usize{ 0, 2, 4, 5, 7, 9, 11, 12 };
 pub const Minor = [8]usize{ 0, 2, 3, 5, 7, 8, 11, 12 };
 
-pub const MusicCommand = struct {
-    freq: ?u16 = null,
-    drum: ?struct { freq: w4.ToneFrequency, duration: w4.ToneDuration } = null,
+pub const Sfx = struct {
+    freq: w4.ToneFrequency,
+    duration: w4.ToneDuration,
+    volume: u8,
+    flags: w4.ToneFlags,
 };
+
+pub const MusicCommand = std.BoundedArray(Sfx, 4);
 
 pub const Intensity = enum(u8) {
     calm = 0,
@@ -44,6 +49,7 @@ pub const Procedural = struct {
     root: usize,
     scale: []const usize,
 
+    walking: bool = false,
     intensity: Intensity = .calm,
     newIntensity: ?Intensity = null,
 
@@ -59,26 +65,47 @@ pub const Procedural = struct {
         };
     }
 
+    fn nextNote(this: @This(), t: usize) u16 {
+        return midiNote[this.root + this.scale[((this.seed * t) % 313) % 8]];
+    }
+
     pub fn getNext(this: *@This(), dt: u32) MusicCommand {
-        var cmd = MusicCommand{};
+        var cmd = MusicCommand.init(0) catch unreachable;
         const beatProgress = this.tick % this.beat;
         const beatTotal = @divTrunc(this.tick, this.beat);
         const beat = beatTotal % this.beatsPerBar;
-        const bar = @divTrunc(beat, this.beatsPerBar);
+        const bar = @divTrunc(beatTotal, this.beatsPerBar);
         this.tick += dt;
         if (beat == 0) this.intensity = this.newIntensity orelse this.intensity;
-        if (this.intensity.atLeast(.active) and bar % 2 == 0 and beatProgress == 0) {
-            cmd.freq = midiNote[this.root + this.scale[((this.seed * this.note) % 313) % 8]];
+        const playNote = beat % 2 == 0 and bar % 4 < 2;
+        if (this.intensity.atLeast(.active) and playNote and beatProgress == 0) {
+            // const notelen = @intCast(u8, this.beat * this.beatsPerBar);
+            cmd.append(Sfx{
+                .freq = .{ .start = this.nextNote(this.note) },
+                .duration = .{ .sustain = 5, .release = 5 },
+                .volume = 10,
+                .flags = .{ .channel = .pulse2, .mode = .p25 },
+            }) catch unreachable;
             this.note += 1;
         }
-        if (this.intensity.atLeast(.calm) and beat == 0) cmd.drum = .{
-            .freq = .{ .start = 100, .end = 1 },
-            .duration = .{ .sustain = 1, .release = 4 },
-        };
-        if (this.intensity.atLeast(.danger) and beat % 3 == 1) cmd.drum = .{
-            .freq = .{ .start = 1761 },
-            .duration = .{ .release = 6 },
-        };
+        if (this.intensity.atLeast(.calm) and beat == 0 and beatProgress == 0) cmd.append(.{
+            .freq = .{ .start = 220, .end = 110 },
+            .duration = .{ .release = 3 },
+            .volume = 20,
+            .flags = .{ .channel = .triangle },
+        }) catch unreachable;
+        if (this.intensity.atLeast(.active) and beat == this.beatsPerBar / 2 and beatProgress == 0) cmd.append(.{
+            .freq = .{ .start = 110, .end = 55 },
+            .duration = .{ .release = 3 },
+            .volume = 20,
+            .flags = .{ .channel = .triangle },
+        }) catch unreachable;
+        if (this.walking and beat % 3 == 1 and beatProgress == 7) cmd.append(.{
+            .freq = .{ .start = 1761, .end = 1 },
+            .duration = .{ .release = 5 },
+            .volume = 5,
+            .flags = .{ .channel = .noise },
+        }) catch unreachable;
         return cmd;
     }
 };

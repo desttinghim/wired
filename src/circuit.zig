@@ -218,7 +218,9 @@ const Queue = struct {
 };
 
 const w4 = @import("wasm4.zig");
-pub fn fill(this: *@This(), rootRaw: Cell) void {
+// Returns number of cells filled
+pub fn fill(this: *@This(), rootRaw: Cell) usize {
+    var count: usize = 0;
     const root = rootRaw - this.offset;
     var visited = std.StaticBitSet(MAXCELLS).initEmpty();
     var q = Queue.init();
@@ -229,6 +231,7 @@ pub fn fill(this: *@This(), rootRaw: Cell) void {
         if (visited.isSet(index)) continue;
         visited.set(index);
         this.enable(cell);
+        count += 1;
         for (get_inputs(tile)) |conductor, i| {
             if (!conductor) continue;
             const s = @intToEnum(Side, i);
@@ -248,6 +251,7 @@ pub fn fill(this: *@This(), rootRaw: Cell) void {
             }
         }
     }
+    return count;
 }
 
 pub fn clear(this: *@This()) void {
