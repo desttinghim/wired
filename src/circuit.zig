@@ -9,22 +9,22 @@ pub fn is_circuit(tile: u8) bool {
 }
 
 pub fn is_plug(tile: u8) bool {
-    return (tile >= 149 and tile <= 153) or tile == 147;
+    return (tile >= 43 and tile <= 46) or tile == 41;
 }
 
 pub fn is_conduit(tile: u8) bool {
-    return (tile >= 128 and tile < 132) or
-        (tile >= 144 and tile < 148) or
-        (tile >= 160 and tile < 164) or
-        (tile >= 176 and tile < 180);
+    return (tile >= 23 and tile <= 26) or
+        (tile >= 39 and tile <= 42) or
+        (tile >= 55 and tile <= 58) or
+        (tile >= 71 and tile <= 74);
 }
 
 pub fn is_switch(tile: u8) bool {
-    return tile >= 134 and tile < 136;
+    return tile >= 27 and tile <= 28;
 }
 
 pub fn toggle_switch(tile: u8) u8 {
-    return if (tile == 134) 135 else 134;
+    return if (tile == 27) 28 else 27;
 }
 
 const Side = enum(u2) { up, right, down, left };
@@ -46,33 +46,33 @@ const Current = [4]bool;
 fn get_inputs(tile: u8) Current {
     return switch (tile) {
         // Corners
-        128 => .{ false, true, true, false },
-        129 => .{ false, false, true, true },
-        144 => .{ true, false, false, true },
-        145 => .{ true, true, false, false },
+        23 => .{ false, true, true, false },
+        24 => .{ false, false, true, true },
+        39 => .{ true, false, false, true },
+        40 => .{ true, true, false, false },
         // Straight
-        130 => .{ false, true, false, true },
-        131 => .{ true, false, true, false },
+        25 => .{ false, true, false, true },
+        26 => .{ true, false, true, false },
         // Cross
-        146 => .{ false, false, false, false },
-        147 => .{ true, true, true, true },
+        41 => .{ false, false, false, false },
+        42 => .{ true, true, true, true },
         // Ends
-        160 => .{ false, false, true, false },
-        161 => .{ false, true, false, false },
-        162 => .{ true, false, false, false },
-        163 => .{ false, false, false, true },
+        55 => .{ false, false, true, false },
+        56 => .{ false, true, false, false },
+        57 => .{ true, false, false, false },
+        58 => .{ false, false, false, true },
         // Tees
-        176 => .{ false, true, true, true },
-        177 => .{ true, true, false, true },
-        178 => .{ true, false, true, true },
-        179 => .{ true, true, true, false },
+        71 => .{ false, true, true, true },
+        72 => .{ true, true, false, true },
+        73 => .{ true, false, true, true },
+        74 => .{ true, true, true, false },
         // Plugs
-        150 => .{ false, false, true, false },
-        151 => .{ true, false, false, false },
-        152 => .{ false, false, false, true },
-        153 => .{ false, true, false, false },
+        43 => .{ false, false, true, false },
+        44 => .{ true, false, false, false },
+        45 => .{ false, false, false, true },
+        46 => .{ false, true, false, false },
         // Closed switch
-        134 => .{ true, false, true, false },
+        27 => .{ true, false, true, false },
         else => .{ false, false, false, false },
     };
 }
@@ -82,12 +82,12 @@ const Plugs = [4]bool;
 fn get_plugs(tile: u8) Plugs {
     return switch (tile) {
         // Plugs
-        150 => .{ true, false, false, false },
-        151 => .{ false, false, true, false },
-        152 => .{ false, true, false, false },
-        153 => .{ false, false, false, true },
+        43 => .{ true, false, false, false },
+        44 => .{ false, false, true, false },
+        45 => .{ false, true, false, false },
+        46 => .{ false, false, false, true },
         // Cross
-        146 => .{ true, true, true, true },
+        41 => .{ true, true, true, true },
         else => .{ false, false, false, false },
     };
 }
