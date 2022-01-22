@@ -1,6 +1,7 @@
 const std = @import("std");
 const w4 = @import("wasm4.zig");
 
+// Adapted from https://gist.github.com/YuxiUx/c3a8787209e32fc29fb48e8454f0009c
 const midiNote = [_]u16{
     8,    9,    9,    10,    10,    11,    12,    12,   13,   14,   15,
     15,   16,   17,   18,    19,    21,    22,    23,   24,   26,   28,

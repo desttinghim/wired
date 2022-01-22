@@ -4,7 +4,7 @@ const util = @import("util.zig");
 const Vec2 = util.Vec2;
 const Cell = util.Cell;
 
-fn is_circuit(tile: u8) bool {
+pub fn is_circuit(tile: u8) bool {
     return is_plug(tile) or is_conduit(tile) or is_switch(tile);
 }
 
@@ -12,7 +12,7 @@ pub fn is_plug(tile: u8) bool {
     return (tile >= 149 and tile <= 153) or tile == 147;
 }
 
-fn is_conduit(tile: u8) bool {
+pub fn is_conduit(tile: u8) bool {
     return (tile >= 128 and tile < 132) or
         (tile >= 144 and tile < 148) or
         (tile >= 160 and tile < 164) or
@@ -23,13 +23,22 @@ pub fn is_switch(tile: u8) bool {
     return tile >= 134 and tile < 136;
 }
 
-fn toggle_switch(tile: u8) u8 {
+pub fn toggle_switch(tile: u8) u8 {
     return if (tile == 134) 135 else 134;
 }
 
 const Side = enum(u2) { up, right, down, left };
-fn side(s: Side) u2 {
+pub fn side(s: Side) u2 {
     return @enumToInt(s);
+}
+
+pub fn dir(s: Side) Cell {
+    return switch (s) {
+        .up => util.Dir.up,
+        .down => util.Dir.down,
+        .left => util.Dir.left,
+        .right => util.Dir.right,
+    };
 }
 
 const Current = [4]bool;
@@ -80,31 +89,6 @@ fn get_plugs(tile: u8) Plugs {
         // Cross
         146 => .{ true, true, true, true },
         else => .{ false, false, false, false },
-    };
-}
-
-const Signals = [4]bool;
-/// Returns sides where a signal may be sent
-fn get_signals(tile: u8) Signals {
-    return switch (tile) {
-        // Ends
-        160 => .{ true, true, false, true },
-        161 => .{ true, false, true, true },
-        162 => .{ false, true, true, true },
-        163 => .{ true, true, true, false },
-        // Switches
-        134 => .{ true, false, true, false },
-        135 => .{ true, false, true, false },
-        else => .{ false, false, false, false },
-    };
-}
-
-fn dir(s: Side) Cell {
-    return switch (s) {
-        .up => Vec2{ 0, -1 },
-        .down => Vec2{ 0, 1 },
-        .left => Vec2{ -1, 0 },
-        .right => Vec2{ 1, 0 },
     };
 }
 
@@ -202,34 +186,26 @@ pub fn toggle(this: *@This(), cell: Cell) void {
     }
 }
 
-const Queue = struct {
-    data: std.BoundedArray(Cell, MAXCELLS),
-    pub fn init() @This() {
-        return @This(){
-            .data = std.BoundedArray(Cell, MAXCELLS).init(0) catch unreachable,
-        };
+pub fn clear(this: *@This()) void {
+    for (this.cells) |*cell| {
+        cell.enabled = false;
     }
-    pub fn insert(this: *@This(), c: Cell) void {
-        this.data.insert(0, c) catch unreachable;
-    }
-    pub fn remove(this: *@This()) ?Cell {
-        return this.data.popOrNull();
-    }
-};
+    this.bridges.resize(0) catch unreachable;
+}
 
-const w4 = @import("wasm4.zig");
 // Returns number of cells filled
 pub fn fill(this: *@This(), rootRaw: Cell) usize {
+    const Queue = util.Queue(Cell, MAXCELLS);
     var count: usize = 0;
     const root = rootRaw - this.offset;
-    var visited = std.StaticBitSet(MAXCELLS).initEmpty();
+    var visited: [MAXCELLS]bool = [_]bool{false} ** MAXCELLS;
     var q = Queue.init();
     q.insert(root);
     while (q.remove()) |cell| {
         const index = this.indexOf(cell) orelse continue;
         const tile = this.get_cell(cell) orelse continue;
-        if (visited.isSet(index)) continue;
-        visited.set(index);
+        if (visited[index]) continue;
+        visited[index] = true;
         this.enable(cell);
         count += 1;
         for (get_inputs(tile)) |conductor, i| {
@@ -252,11 +228,4 @@ pub fn fill(this: *@This(), rootRaw: Cell) usize {
         }
     }
     return count;
-}
-
-pub fn clear(this: *@This()) void {
-    for (this.cells) |*cell| {
-        cell.enabled = false;
-    }
-    this.bridges.resize(0) catch unreachable;
 }

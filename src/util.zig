@@ -63,3 +63,20 @@ pub const AABB = struct {
         return @This(){ .pos = this.pos + vec2f, .size = this.size };
     }
 };
+
+pub fn Queue(comptime T: type, len: usize) type {
+    return struct {
+        data: std.BoundedArray(T, len),
+        pub fn init() @This() {
+            return @This(){
+                .data = std.BoundedArray(T, len).init(0) catch unreachable,
+            };
+        }
+        pub fn insert(this: *@This(), t: T) void {
+            this.data.insert(0, t) catch unreachable;
+        }
+        pub fn remove(this: *@This()) ?Cell {
+            return this.data.popOrNull();
+        }
+    };
+}
