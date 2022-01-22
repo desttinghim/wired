@@ -269,8 +269,7 @@ export fn update() void {
 
     velocityProcess(1, &player.pos);
     physicsProcess(1, &player.pos, &player.physics);
-    circuitManipulationProcess(1, &player.pos, &player.control);
-    wireManipulationProcess(1, &player.pos, &player.control);
+    manipulationProcess(&player.pos, &player.control);
     controlProcess(1, &player.pos, &player.control, &player.physics, &player.kinematic);
     kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
@@ -348,16 +347,17 @@ export fn update() void {
     time += 1;
 }
 
-fn circuitManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
+fn manipulationProcess(pos: *Pos, control: *Control) void {
     var offset = switch (control.facing) {
         .left => Vec2f{ -6, -4 },
         .right => Vec2f{ 6, -4 },
         .up => Vec2f{ 0, -12 },
         .down => Vec2f{ 0, 4 },
     };
+    const offsetPos = pos.pos + offset;
+    const cell = util.world2cell(offsetPos);
+
     if (control.grabbing == null) {
-        const mapPos = vec2ftovec2(pos.pos + offset);
-        const cell = @divTrunc(mapPos, @splat(2, @as(i32, 8)));
         if (circuit.get_cell(cell)) |tile| {
             if (Circuit.is_switch(tile)) {
                 indicator = .{ .t = .lever, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
@@ -366,48 +366,6 @@ fn circuitManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
                 }
             }
         }
-    }
-}
-
-fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
-    var offset = switch (control.facing) {
-        .left => Vec2f{ -6, -4 },
-        .right => Vec2f{ 6, -4 },
-        .up => Vec2f{ 0, -12 },
-        .down => Vec2f{ 0, 4 },
-    };
-    var offsetPos = pos.pos + offset;
-    var mapPos = util.world2cell(offsetPos);
-
-    if (control.grabbing) |details| {
-        var wire = &wires.slice()[details.id];
-        var nodes = wire.nodes.slice();
-
-        var maxLength = wireMaxLength(wire);
-        var length = wireLength(wire);
-
-        if (length > maxLength * 1.5) {
-            nodes[details.which].pinned = false;
-            control.grabbing = null;
-            return;
-        } else {
-            nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
-        }
-
-        if (Circuit.is_plug(circuit.get_cell(mapPos) orelse 0)) {
-            const active = circuit.isEnabled(mapPos);
-            indicator = .{ .t = .plug, .pos = mapPos * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 }, .active = active };
-            if (input.btnp(.one, .two)) {
-                nodes[details.which].pinned = true;
-                nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
-                nodes[details.which].last = vec2tovec2f(indicator.?.pos);
-                control.grabbing = null;
-            }
-        } else if (input.btnp(.one, .two)) {
-            nodes[details.which].pinned = false;
-            control.grabbing = null;
-        }
-    } else {
         const interactDistance = 4;
         var minDistance: f32 = interactDistance;
         var interactWireID: ?usize = null;
@@ -435,6 +393,34 @@ fn wireManipulationProcess(_: f32, pos: *Pos, control: *Control) void {
             if (input.btnp(.one, .two)) {
                 control.grabbing = .{ .id = wireID, .which = which };
             }
+        }
+    } else if (control.grabbing) |details| {
+        var wire = &wires.slice()[details.id];
+        var nodes = wire.nodes.slice();
+
+        var maxLength = wireMaxLength(wire);
+        var length = wireLength(wire);
+
+        if (length > maxLength * 1.5) {
+            nodes[details.which].pinned = false;
+            control.grabbing = null;
+            return;
+        } else {
+            nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
+        }
+
+        if (Circuit.is_plug(circuit.get_cell(cell) orelse 0)) {
+            const active = circuit.isEnabled(cell);
+            indicator = .{ .t = .plug, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 }, .active = active };
+            if (input.btnp(.one, .two)) {
+                nodes[details.which].pinned = true;
+                nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
+                nodes[details.which].last = vec2tovec2f(indicator.?.pos);
+                control.grabbing = null;
+            }
+        } else if (input.btnp(.one, .two)) {
+            nodes[details.which].pinned = false;
+            control.grabbing = null;
         }
     }
 }
