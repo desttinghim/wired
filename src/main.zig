@@ -193,8 +193,6 @@ export fn start() void {
     circuit.load(mapPos, &assets.conduit, assets.conduit_size);
     map.load(mapPos, &assets.solid, assets.solid_size);
 
-    // w4.trace("{}, {}, {}", .{ assets.spawn, mapPos, assets.spawn - mapPos });
-
     player = .{
         .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
         .control = .{ .controller = .player, .state = .stand },
@@ -415,7 +413,6 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
             if (input.btnp(.one, .two)) {
                 nodes[details.which].pinned = true;
                 nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
-                nodes[details.which].last = vec2tovec2f(indicator.?.pos);
                 control.grabbing = null;
             }
         } else if (input.btnp(.one, .two)) {
@@ -428,12 +425,13 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
 fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
+    var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.1, 0.1 } };
+    var kinematic = Kinematic{ .col = AABB{ .pos = Vec2f{ -1, -1 }, .size = Vec2f{ 1, 1 } } };
 
     for (nodes) |*node| {
-        var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.1, 0.1 } };
         velocityProcess(dt, node);
         physicsProcess(dt, node, &physics);
-        collideNode(node);
+        kinematicProcess(dt, node, &kinematic);
     }
 
     var iterations: usize = 0;
@@ -442,31 +440,13 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
         while (left < nodes.len) : (left += 1) {
             // Left side
             constrainNodes(&nodes[left - 1], &nodes[left]);
-            collideNode(&nodes[left - 1]);
-            collideNode(&nodes[left]);
+            kinematicProcess(dt, &nodes[left - 1], &kinematic);
+            kinematicProcess(dt, &nodes[left], &kinematic);
         }
-    }
-}
-
-/// Returns normal of collision
-fn collideNode(node: *Pos) void {
-    if (node.pinned) return;
-    const tileSize = Vec2{ 8, 8 };
-    const tileSizef = vec2tovec2f(tileSize);
-    const iPos = vec2ftovec2(node.pos);
-    const mapPos = @divTrunc(iPos, tileSize);
-    if (map.isSolid(mapPos)) {
-        const velNorm = util.normalizef(node.pos - node.last);
-        var collideVec = node.last;
-        while (!map.isSolid(vec2ftovec2((collideVec + velNorm) / tileSizef))) {
-            collideVec += velNorm;
-        }
-        node.pos = collideVec;
     }
 }
 
 const wireSegmentMaxLength = 4;
-const wireSegmentMaxLengthV = @splat(2, @as(f32, wireSegmentMaxLength));
 
 fn wireMaxLength(wire: *Wire) f32 {
     return @intToFloat(f32, wire.nodes.len) * wireSegmentMaxLength;

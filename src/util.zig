@@ -18,16 +18,9 @@ pub const DirF = struct {
     pub const right = Vec2f{ 1, 0 };
 };
 
-pub fn distance(a: Vec2, b: Vec2) i32 {
-    var subbed = a - b;
-    subbed[0] = std.math.absInt(subbed[0]) catch unreachable;
-    subbed[1] = std.math.absInt(subbed[1]) catch unreachable;
-    return @reduce(.Max, subbed);
-}
-
 pub fn distancef(a: Vec2f, b: Vec2f) f32 {
     var subbed = @fabs(a - b);
-    return @reduce(.Max, subbed);
+    return lengthf(subbed);
 }
 
 pub fn lengthf(vec: Vec2f) f32 {
