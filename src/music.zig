@@ -83,7 +83,7 @@ pub const Procedural = struct {
             cmd.append(Sfx{
                 .freq = .{ .start = this.nextNote(this.note) },
                 .duration = .{ .sustain = 5, .release = 5 },
-                .volume = 10,
+                .volume = 5,
                 .flags = .{ .channel = .pulse2, .mode = .p25 },
             }) catch unreachable;
             this.note += 1;
@@ -91,13 +91,13 @@ pub const Procedural = struct {
         if (this.intensity.atLeast(.calm) and beat == 0 and beatProgress == 0) cmd.append(.{
             .freq = .{ .start = 220, .end = 110 },
             .duration = .{ .release = 3 },
-            .volume = 20,
+            .volume = 100,
             .flags = .{ .channel = .triangle },
         }) catch unreachable;
         if (this.intensity.atLeast(.active) and beat == this.beatsPerBar / 2 and beatProgress == 0) cmd.append(.{
             .freq = .{ .start = 110, .end = 55 },
             .duration = .{ .release = 3 },
-            .volume = 20,
+            .volume = 100,
             .flags = .{ .channel = .triangle },
         }) catch unreachable;
         if (this.walking and beat % 3 == 1 and beatProgress == 7) cmd.append(.{
