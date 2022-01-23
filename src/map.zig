@@ -21,21 +21,18 @@ const tilemap_stride = 128;
 
 alloc: std.mem.Allocator,
 tiles: []const u8,
-offset: Cell,
 map_size: Vec2,
 
 pub fn init(alloc: std.mem.Allocator) !@This() {
     var this = @This(){
         .alloc = alloc,
-        .offset = Cell{ 0, 0 },
         .tiles = &assets.solid,
         .map_size = assets.solid_size,
     };
     return this;
 }
 
-pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
-    this.offset = offset;
+pub fn load(this: *@This(), map: []const u8, map_size: Vec2) void {
     this.tiles = map;
     this.map_size = map_size;
 }
@@ -44,14 +41,14 @@ pub fn deinit(this: @This()) void {
     this.alloc.free(this.tiles);
 }
 
-pub fn draw(this: @This()) void {
+pub fn draw(this: @This(), offset: Vec2) void {
     w4.DRAW_COLORS.* = 0x0210;
     var y: usize = 0;
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
             const pos = Vec2{ @intCast(i32, x), @intCast(i32, y) } * tile_size;
-            const a = (@intCast(usize, this.offset[0]) + x) + (@intCast(usize, this.offset[1]) + y) * @intCast(usize, this.map_size[0]);
+            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, this.map_size[0]);
             const tilePlus = this.tiles[a];
             if (tilePlus == 0) continue;
             const tile = tilePlus - 1;

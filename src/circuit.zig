@@ -151,7 +151,6 @@ const CellMap = struct {
 
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 
-offset: Cell,
 map: []const u8,
 map_size: Vec2,
 cell_map: CellMap,
@@ -160,7 +159,6 @@ sources: std.BoundedArray(Cell, MAXSOURCES),
 
 pub fn init() @This() {
     var this = @This(){
-        .offset = Cell{ 0, 0 },
         .map = &assets.conduit,
         .map_size = assets.conduit_size,
         .cell_map = CellMap.init(),
@@ -170,19 +168,9 @@ pub fn init() @This() {
     return this;
 }
 
-pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
-    this.offset = offset;
+pub fn load(this: *@This(), map: []const u8, map_size: Vec2) void {
     this.map = map;
     this.map_size = map_size;
-    // var y: usize = 0;
-    // while (y < 20) : (y += 1) {
-    //     var x: usize = 0;
-    //     while (x < 20) : (x += 1) {
-    //         const i = x + y * 20;
-    //         const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
-    //         this.cells[i].tile = map[a];
-    //     }
-    // }
 }
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
@@ -295,16 +283,16 @@ const tilemap_width = 16;
 const tilemap_height = 16;
 const tilemap_stride = 128;
 
-pub fn draw(this: @This()) void {
+pub fn draw(this: @This(), offset: Vec2) void {
     var y: usize = 0;
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
             const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) };
             const pos = cell * tile_size;
-            const tile = this.get_cell(cell + this.offset) orelse continue;
+            const tile = this.get_cell(cell + offset) orelse continue;
             if (tile == 0) continue;
-            if (this.isEnabled(cell + this.offset)) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
+            if (this.isEnabled(cell + offset)) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
             const t = Vec2{
                 @intCast(i32, (tile % tilemap_width) * tile_size[0]),
                 @intCast(i32, (tile / tilemap_width) * tile_size[0]),
