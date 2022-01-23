@@ -6,7 +6,7 @@ const Vec2 = util.Vec2;
 const Cell = util.Cell;
 
 pub fn is_circuit(tile: u8) bool {
-    return is_plug(tile) or is_conduit(tile) or is_switch(tile);
+    return is_plug(tile) or is_conduit(tile) or is_switch(tile) or is_logic(tile);
 }
 
 pub fn is_plug(tile: u8) bool {
@@ -21,26 +21,48 @@ pub fn is_conduit(tile: u8) bool {
 }
 
 pub fn is_switch(tile: u8) bool {
-    return tile == 27 or tile == 28;
+    return tile >= 27 and tile <= 30;
+}
+
+pub fn is_logic(tile: u8) bool {
+    return tile >= 59 and tile <= 62;
 }
 
 pub fn toggle_switch(tile: u8) u8 {
-    return if (tile == 27) 28 else 27;
-}
-
-const Side = enum(u2) { up, right, down, left };
-pub fn side(s: Side) u2 {
-    return @enumToInt(s);
-}
-
-pub fn dir(s: Side) Cell {
-    return switch (s) {
-        .up => util.Dir.up,
-        .down => util.Dir.down,
-        .left => util.Dir.left,
-        .right => util.Dir.right,
+    return switch (tile) {
+        27 => 28,
+        28 => 27,
+        29 => 30,
+        30 => 29,
+        else => unreachable,
     };
 }
+
+const Side = enum(u2) {
+    up,
+    right,
+    down,
+    left,
+    pub fn opposite(s: Side) Side {
+        return switch (s) {
+            .up => .down,
+            .down => .up,
+            .left => .right,
+            .right => .left,
+        };
+    }
+    pub fn side(s: Side) u2 {
+        return @enumToInt(s);
+    }
+    pub fn dir(s: Side) Cell {
+        return switch (s) {
+            .up => util.Dir.up,
+            .down => util.Dir.down,
+            .left => util.Dir.left,
+            .right => util.Dir.right,
+        };
+    }
+};
 
 const Current = [4]bool;
 /// Returns sides that can conduct current
@@ -72,9 +94,63 @@ fn get_inputs(tile: u8) Current {
         44 => .{ true, false, false, false },
         45 => .{ false, false, false, true },
         46 => .{ false, true, false, false },
-        // Closed switch
-        27 => .{ true, false, true, false },
+        // Switch
+        27, 28, 29, 30 => .{ true, false, true, false },
+        // Logic
+        59 => .{ false, true, false, true },
+        60 => .{ false, false, true, false },
+        61 => .{ false, true, false, true },
         else => .{ false, false, false, false },
+    };
+}
+
+fn get_outputs(tile: u8) Current {
+    return switch (tile) {
+        // Corners
+        23 => .{ false, true, true, false },
+        24 => .{ false, false, true, true },
+        39 => .{ true, true, false, false },
+        40 => .{ true, false, false, true },
+        // Straight
+        25 => .{ false, true, false, true },
+        26 => .{ true, false, true, false },
+        // Cross
+        41 => .{ false, false, false, false },
+        42 => .{ true, true, true, true },
+        // Ends
+        55 => .{ false, false, true, false },
+        56 => .{ false, true, false, false },
+        57 => .{ true, false, false, false },
+        58 => .{ false, false, false, true },
+        // Tees
+        71 => .{ false, true, true, true },
+        72 => .{ true, true, false, true },
+        73 => .{ true, false, true, true },
+        74 => .{ true, true, true, false },
+        // Plugs
+        43 => .{ false, false, true, false },
+        44 => .{ true, false, false, false },
+        45 => .{ false, false, false, true },
+        46 => .{ false, true, false, false },
+        // Switch
+        27, 29 => .{ true, false, true, false },
+        // Logic
+        // Calculated in fill
+        // 59 => .{ false, false, false, false },
+        // 60 => .{ true, false, false, false },
+        // 61 => .{ true, false, false, false },
+        else => .{ false, false, false, false },
+    };
+}
+
+const Logic = union(enum) { Not, And, Xor };
+
+fn get_logic(tile: u8) ?Logic {
+    return switch (tile) {
+        59 => .And,
+        60 => .Not,
+        61 => .Xor,
+        else => null,
     };
 }
 
@@ -102,17 +178,18 @@ pub fn get_cell(this: @This(), cell: Cell) ?u8 {
 }
 
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
-    var cellstate = CellState{ .tile = tile };
-    this.cell_map.set(cell, cellstate);
+    var cellData = CellData{ .tile = tile };
+    this.cell_map.set(cell, cellData);
 }
 
 const MAXCELLS = 400;
 const MAXBRIDGES = 10;
 const MAXSOURCES = 10;
-const MAXDOORS = 10;
+const MAXDOORS = 40;
+const MAXLOGIC = 40;
 
-const CellState = struct { enabled: bool = false, tile: u8 };
-const CellMap = util.Map(Cell, CellState, MAXCELLS);
+const CellData = struct { level: u8 = 0, tile: u8 };
+const CellMap = util.Map(Cell, CellData, MAXCELLS);
 
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 const DoorState = struct { cell: Cell, enabled: bool };
@@ -123,6 +200,7 @@ cell_map: CellMap,
 bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 sources: std.BoundedArray(Cell, MAXSOURCES),
 doors: std.BoundedArray(DoorState, MAXDOORS),
+logic_map: std.BoundedArray(Cell, MAXLOGIC),
 
 pub fn init(map: []const u8, map_size: Vec2) @This() {
     var this = @This(){
@@ -132,7 +210,16 @@ pub fn init(map: []const u8, map_size: Vec2) @This() {
         .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
         .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
         .doors = std.BoundedArray(DoorState, MAXDOORS).init(0) catch unreachable,
+        .logic_map = std.BoundedArray(Cell, MAXLOGIC).init(0) catch unreachable,
     };
+    for (map) |tile, index| {
+        if (is_logic(tile)) {
+            const i = @intCast(i32, index);
+            const cell = Cell{ @mod(i, this.map_size[0]), @divTrunc(i, this.map_size[0]) };
+            // w4.tracef("%d, %d: %d", cell[0], cell[1], this.logic_map.len);
+            this.logic_map.append(cell) catch unreachable;
+        }
+    }
     return this;
 }
 
@@ -143,11 +230,11 @@ pub fn indexOf(this: @This(), cell: Cell) ?usize {
 
 pub fn enable(this: *@This(), cell: Cell) void {
     if (this.cell_map.get(cell)) |c| {
-        c.enabled = true;
+        c.level += 1;
         return;
     }
     const t = this.get_cell(cell) orelse unreachable;
-    this.cell_map.set(cell, .{ .tile = t, .enabled = true });
+    this.cell_map.set(cell, .{ .tile = t, .level = 1 });
 }
 
 pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
@@ -188,7 +275,7 @@ pub fn enabledDoors(this: @This()) std.BoundedArray(Cell, MAXDOORS) {
 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
     if (this.cell_map.get_const(cell)) |c| {
-        return c.enabled;
+        return c.level >= 1;
     }
     return false;
 }
@@ -205,7 +292,7 @@ pub fn toggle(this: *@This(), c: Cell) void {
 
 pub fn clear(this: *@This()) void {
     for (this.cell_map.values.slice()) |*cell| {
-        cell.enabled = false;
+        cell.level = 0;
     }
     for (this.doors.slice()) |*door| {
         door.enabled = false;
@@ -219,9 +306,9 @@ pub fn reset(this: *@This()) void {
 }
 
 const w4 = @import("wasm4.zig");
+const Queue = util.Queue(Cell, MAXCELLS);
 // Returns number of cells filled
 pub fn fill(this: *@This()) usize {
-    const Queue = util.Queue(Cell, MAXCELLS);
     var count: usize = 0;
     var visited = std.BoundedArray(usize, MAXCELLS).init(0) catch unreachable;
     var q = Queue.init();
@@ -229,9 +316,6 @@ pub fn fill(this: *@This()) usize {
         q.insert(source);
     }
     while (q.remove()) |cell| {
-        const index = this.indexOf(cell) orelse continue;
-        const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
-        if (hasVisited) continue;
         const tile = this.get_cell(cell) orelse {
             for (this.doors.slice()) |*d| {
                 if (@reduce(.And, d.cell == cell)) {
@@ -240,15 +324,38 @@ pub fn fill(this: *@This()) usize {
             }
             continue;
         };
-        visited.append(index) catch unreachable;
+        const index = this.indexOf(cell) orelse continue;
         this.enable(cell);
+        const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
+        if (hasVisited and !is_logic(tile)) continue;
+        visited.append(index) catch unreachable;
         count += 1;
-        for (get_inputs(tile)) |conductor, i| {
+        if (get_logic(tile)) |logic| {
+            // TODO: implement other logic (though I'm pretty sure that requires a graph...)
+            if (logic != .And) continue;
+            if (this.cell_map.get(cell)) |data| {
+                // Skip current loop if and isn't high enough
+                if (data.level < 2) continue;
+                q.insert(cell + util.Dir.up);
+            }
+        }
+        for (get_outputs(tile)) |conductor, i| {
             if (!conductor) continue;
             const s = @intToEnum(Side, i);
-            const delta = dir(s);
+            const delta = s.dir();
             // TODO: check that cell can recieve from this side
-            q.insert(cell + delta);
+            const nextCell = cell + delta;
+            const nextTile = this.get_cell(nextCell) orelse here: {
+                for (this.doors.slice()) |*d| {
+                    // w4.tracef("door %d, %d", nextCell[0], nextCell[1]);
+                    if (@reduce(.And, d.cell == nextCell)) {
+                        d.enabled = true;
+                    }
+                }
+                break :here 0;
+            };
+            if (get_inputs(nextTile)[@enumToInt(s.opposite())])
+                q.insert(nextCell);
         }
         if (is_plug(tile)) {
             for (this.bridges.slice()) |*b| {
