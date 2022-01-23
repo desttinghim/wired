@@ -554,6 +554,7 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
     if (!inView(wire.begin().pos) or !inView(wire.end().pos)) return;
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
+    if (!inView(nodes[0].pos)) return;
 
     w4.DRAW_COLORS.* = if (wire.enabled) 0x0002 else 0x0003;
     for (nodes) |node, i| {
