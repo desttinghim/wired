@@ -185,7 +185,7 @@ pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
 }
 
 const MAXCELLS = 400;
-const MAXBRIDGES = 10;
+const MAXBRIDGES = 20;
 const MAXSOURCES = 10;
 const MAXDOORS = 40;
 const MAXLOGIC = 40;
@@ -235,7 +235,7 @@ pub fn enable(this: *@This(), cell: Cell) void {
         c.level += 1;
         return;
     }
-    const t = this.get_cell(cell) orelse unreachable;
+    const t = this.get_cell(cell) orelse return;
     this.cell_map.set(cell, .{ .tile = t, .level = 1 });
 }
 
@@ -347,9 +347,12 @@ pub fn fill(this: *@This()) usize {
             const delta = s.dir();
             // TODO: check that cell can recieve from this side
             const nextCell = cell + delta;
+            if (nextCell[0] < 0 or nextCell[1] < 0 or
+                nextCell[0] >= this.map_size[0] or
+                nextCell[1] >= this.map_size[1])
+                continue;
             const nextTile = this.get_cell(nextCell) orelse here: {
                 for (this.doors.slice()) |*d| {
-                    // w4.tracef("door %d, %d", nextCell[0], nextCell[1]);
                     if (@reduce(.And, d.cell == nextCell)) {
                         d.enabled = true;
                     }

@@ -170,7 +170,7 @@ var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 var wires = std.BoundedArray(Wire, 10).init(0) catch unreachable;
 var camera = Vec2{ 0, 0 };
 const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
-var coins = std.BoundedArray(Coin, 10).init(0) catch unreachable;
+var coins = std.BoundedArray(Coin, 20).init(0) catch unreachable;
 var score: u8 = 0;
 var solids_mutable = assets.solid;
 
