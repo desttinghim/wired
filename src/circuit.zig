@@ -20,7 +20,7 @@ pub fn is_conduit(tile: u8) bool {
 }
 
 pub fn is_switch(tile: u8) bool {
-    return tile >= 27 and tile <= 28;
+    return tile == 27 and tile == 28;
 }
 
 pub fn toggle_switch(tile: u8) u8 {
@@ -48,8 +48,8 @@ fn get_inputs(tile: u8) Current {
         // Corners
         23 => .{ false, true, true, false },
         24 => .{ false, false, true, true },
-        39 => .{ true, false, false, true },
-        40 => .{ true, true, false, false },
+        39 => .{ true, true, false, false },
+        40 => .{ true, false, false, true },
         // Straight
         25 => .{ false, true, false, true },
         26 => .{ true, false, true, false },
@@ -92,7 +92,8 @@ fn get_plugs(tile: u8) Plugs {
     };
 }
 
-pub fn get_cell(this: @This(), c: Cell) ?u8 {
+pub fn get_cell(this: @This(), cell: Cell) ?u8 {
+    const c = cell - this.offset;
     if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return null;
     const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
     return if (this.cells[i].tile != 0) this.cells[i].tile - 1 else null;
@@ -116,18 +117,21 @@ fn cell2index(c: Cell) ?usize {
 const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
 const MAXBRIDGES = 10;
+const MAXSOURCES = 10;
 const CellMap = [MAXCELLS]CellState;
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 
 offset: Cell,
 cells: CellMap,
 bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
+sources: std.BoundedArray(Cell, MAXSOURCES),
 
 pub fn init() @This() {
     var this = @This(){
         .offset = Cell{ 0, 0 },
         .cells = undefined,
         .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
+        .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
     };
     return this;
 }
@@ -163,6 +167,12 @@ pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
     }
 }
 
+pub fn addSource(this: *@This(), cell: Cell) void {
+    if (this.indexOf(cell)) |_| {
+        this.sources.append(cell) catch unreachable;
+    }
+}
+
 pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
     var items = std.BoundedArray(usize, MAXBRIDGES).init(0) catch unreachable;
     for (this.bridges.constSlice()) |b| {
@@ -178,7 +188,8 @@ pub fn isEnabled(this: @This(), cell: Cell) bool {
     return false;
 }
 
-pub fn toggle(this: *@This(), cell: Cell) void {
+pub fn toggle(this: *@This(), c: Cell) void {
+    const cell = c - this.offset;
     if (this.get_cell(cell)) |tile| {
         if (is_switch(tile)) {
             this.set_cell(cell, toggle_switch(tile));
@@ -193,14 +204,21 @@ pub fn clear(this: *@This()) void {
     this.bridges.resize(0) catch unreachable;
 }
 
+pub fn reset(this: *@This()) void {
+    this.clear();
+    this.sources.resize(0) catch unreachable;
+}
+
+const w4 = @import("wasm4.zig");
 // Returns number of cells filled
-pub fn fill(this: *@This(), rootRaw: Cell) usize {
+pub fn fill(this: *@This()) usize {
     const Queue = util.Queue(Cell, MAXCELLS);
     var count: usize = 0;
-    const root = rootRaw - this.offset;
     var visited: [MAXCELLS]bool = [_]bool{false} ** MAXCELLS;
     var q = Queue.init();
-    q.insert(root);
+    for (this.sources.slice()) |source| {
+        q.insert(source);
+    }
     while (q.remove()) |cell| {
         const index = this.indexOf(cell) orelse continue;
         const tile = this.get_cell(cell) orelse continue;

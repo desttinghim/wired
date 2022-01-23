@@ -193,8 +193,11 @@ export fn start() void {
     circuit.load(mapPos, &assets.conduit, assets.conduit_size);
     map.load(mapPos, &assets.solid, assets.solid_size);
 
+    const tile_size = Vec2{ 8, 8 };
+    const offset = Vec2{ 4, 8 };
+
     player = .{
-        .pos = Pos.init(util.vec2ToVec2f((assets.spawn - mapPos) * Map.tile_size) + Vec2f{ 4, 8 }),
+        .pos = Pos.init(util.vec2ToVec2f(assets.spawn * tile_size + offset)),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 8, .flags = .{ .bpp = .b2 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
@@ -222,45 +225,18 @@ export fn start() void {
         const w = Wire{ .nodes = nodes };
         wires.append(w) catch unreachable;
     }
+
+    for (assets.sources) |source| {
+        circuit.addSource(source);
+    }
+
+    updateCircuit();
 }
 
 var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever }, active: bool = false } = null;
 var time: usize = 0;
 
 export fn update() void {
-    {
-        // Doing this before clearing the screen since the stack
-        // reaches the screen during this block
-        circuit.clear();
-        for (wires.slice()) |*wire, wireID| {
-            const nodes = wire.nodes.constSlice();
-            const cellBegin = util.world2cell(nodes[0].pos);
-            const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
-
-            circuit.bridge(.{ cellBegin, cellEnd }, wireID);
-        }
-        var count: usize = 0;
-        for (assets.sources) |source| {
-            count += circuit.fill(source);
-        }
-        if (count < 30) {
-            music.newIntensity = .calm;
-        } else if (count < 60) {
-            music.newIntensity = .active;
-        } else {
-            music.newIntensity = .danger;
-        }
-        var enabledWires = circuit.enabledBridges();
-        for (enabledWires.slice()) |wireID| {
-            var wire = &wires.slice()[wireID];
-            wire.enabled = true;
-            if (time % 60 == 0) {
-                if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
-                if (!wire.end().pinned) particles.createNRandom(wire.end().pos, 8);
-            }
-        }
-    }
-
     for (wires.slice()) |*wire| {
         wirePhysicsProcess(1, wire);
     }
@@ -361,6 +337,7 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
                 indicator = .{ .t = .lever, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
                 if (input.btnp(.one, .two)) {
                     circuit.toggle(cell);
+                    updateCircuit();
                 }
             }
         }
@@ -390,6 +367,8 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
         if (interactWireID) |wireID| {
             if (input.btnp(.one, .two)) {
                 control.grabbing = .{ .id = wireID, .which = which };
+                wires.slice()[wireID].nodes.slice()[which].pos = pos.pos + Vec2f{ 0, -4 };
+                updateCircuit();
             }
         }
     } else if (control.grabbing) |details| {
@@ -402,9 +381,11 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
         if (length > maxLength * 1.5) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
-            return;
+            // updateCircuit = true;
+            // return;
         } else {
             nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
+            // updateCircuit = true;
         }
 
         if (Circuit.is_plug(circuit.get_cell(cell) orelse 0)) {
@@ -414,10 +395,40 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
                 nodes[details.which].pinned = true;
                 nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
                 control.grabbing = null;
+                updateCircuit();
             }
         } else if (input.btnp(.one, .two)) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
+            // updateCircuit = true;
+        }
+    }
+}
+
+fn updateCircuit() void {
+    circuit.clear();
+    for (wires.slice()) |*wire, wireID| {
+        const nodes = wire.nodes.constSlice();
+        const cellBegin = util.world2cell(nodes[0].pos);
+        const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
+
+        circuit.bridge(.{ cellBegin, cellEnd }, wireID);
+    }
+    var count = circuit.fill();
+    if (count < 30) {
+        music.newIntensity = .calm;
+    } else if (count < 60) {
+        music.newIntensity = .active;
+    } else {
+        music.newIntensity = .danger;
+    }
+    var enabledWires = circuit.enabledBridges();
+    for (enabledWires.slice()) |wireID| {
+        var wire = &wires.slice()[wireID];
+        wire.enabled = true;
+        if (time % 60 == 0) {
+            if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
+            if (!wire.end().pinned) particles.createNRandom(wire.end().pos, 8);
         }
     }
 }
@@ -497,7 +508,7 @@ fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
     w4.DRAW_COLORS.* = 0x0010;
     const fpos = pos.pos + sprite.offset;
-    const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) };
+    const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) } - map.offset * Map.tile_size;
     const index = sprite.index;
     const t = w4.Vec2{ @intCast(i32, (index * 8) % 128), @intCast(i32, (index * 8) / 128) };
     w4.blitSub(&assets.tiles, ipos, sprite.size, t, 128, sprite.flags);

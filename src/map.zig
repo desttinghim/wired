@@ -20,30 +20,24 @@ const tilemap_height = 16;
 const tilemap_stride = 128;
 
 alloc: std.mem.Allocator,
-tiles: []u8,
+tiles: []const u8,
 offset: Cell,
+map_size: Vec2,
 
 pub fn init(alloc: std.mem.Allocator) !@This() {
-    var tiles = try alloc.alloc(u8, MAXCELLS);
     var this = @This(){
         .alloc = alloc,
         .offset = Cell{ 0, 0 },
-        .tiles = tiles,
+        .tiles = &assets.solid,
+        .map_size = assets.solid_size,
     };
     return this;
 }
 
 pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
     this.offset = offset;
-    var y: usize = 0;
-    while (y < height) : (y += 1) {
-        var x: usize = 0;
-        while (x < width) : (x += 1) {
-            const i = x + y * 20;
-            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
-            this.tiles[i] = map[a];
-        }
-    }
+    this.tiles = map;
+    this.map_size = map_size;
 }
 
 pub fn deinit(this: @This()) void {
@@ -52,32 +46,35 @@ pub fn deinit(this: @This()) void {
 
 pub fn draw(this: @This()) void {
     w4.DRAW_COLORS.* = 0x0210;
-    for (this.tiles) |tilePlus, i| {
-        if (tilePlus == 0) continue;
-        const tile = tilePlus - 1;
-        const t = Vec2{
-            @intCast(i32, (tile % tilemap_width) * tile_width),
-            @intCast(i32, (tile / tilemap_width) * tile_width),
-        };
-        const pos = Vec2{
-            @intCast(i32, (i % width) * tile_width),
-            @intCast(i32, (i / width) * tile_width),
-        };
-        w4.blitSub(
-            &assets.tiles,
-            pos,
-            .{ tile_width, tile_height },
-            t,
-            tilemap_stride,
-            .{ .bpp = .b2 },
-        );
+    var y: usize = 0;
+    while (y < height) : (y += 1) {
+        var x: usize = 0;
+        while (x < width) : (x += 1) {
+            const pos = Vec2{ @intCast(i32, x), @intCast(i32, y) } * tile_size;
+            const a = (@intCast(usize, this.offset[0]) + x) + (@intCast(usize, this.offset[1]) + y) * @intCast(usize, this.map_size[0]);
+            const tilePlus = this.tiles[a];
+            if (tilePlus == 0) continue;
+            const tile = tilePlus - 1;
+            const t = Vec2{
+                @intCast(i32, (tile % tilemap_width) * tile_width),
+                @intCast(i32, (tile / tilemap_width) * tile_width),
+            };
+            w4.blitSub(
+                &assets.tiles,
+                pos,
+                .{ tile_width, tile_height },
+                t,
+                tilemap_stride,
+                .{ .bpp = .b2 },
+            );
+        }
     }
 }
 
 /// pos should be in tile coordinates, not world coordinates
 fn getTile(this: @This(), x: i32, y: i32) ?u8 {
-    if (x < 0 or x > 19 or y < 0 or y > 19) return null;
-    const i = x + y * 20;
+    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
+    const i = x + y * this.map_size[0];
     return this.tiles[@intCast(u32, i)];
 }
 

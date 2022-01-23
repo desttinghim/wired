@@ -13,16 +13,16 @@ const Point = struct {
 };
 
 const Object = struct {
-    height: u64 = 0,
+    height: f64 = 0,
     id: u64 = 0,
     name: []const u8,
     point: bool = false,
     polyline: []Point = &.{},
     properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": enum { wire, source, door, spawn },
+    @"type": enum { wire, source, door, spawn, focus },
     visible: bool = true,
-    width: u64 = 0,
+    width: f64 = 0,
     x: f64 = 0,
     y: f64 = 0,
 };
@@ -108,6 +108,7 @@ pub fn do() !void {
 
         try outlist.appendSlice("const std = @import(\"std\");\n");
         try outlist.appendSlice("const Vec2 = std.meta.Vector(2,i32);\n");
+        try outlist.appendSlice("const AABB = struct {pos: Vec2, size: Vec2};\n");
         try outlist.appendSlice("const Wire = struct { p1: Vec2, p2: Vec2, a1: bool, a2: bool };\n");
 
         var outbuffer: [16 * KB]u8 = undefined;
@@ -131,11 +132,15 @@ pub fn do() !void {
                     var sourcelist = std.ArrayList(Object).init(alloc);
                     defer sourcelist.deinit();
 
+                    var focilist = std.ArrayList(Object).init(alloc);
+                    defer focilist.deinit();
+
                     for (layer.objects) |obj| {
                         switch (obj.@"type") {
                             .wire => try wirelist.append(obj),
                             .door => try doorlist.append(obj),
                             .source => try sourcelist.append(obj),
+                            .focus => try focilist.append(obj),
                             .spawn => try appendSpawn(&outlist, obj),
                         }
                     }
@@ -143,6 +148,7 @@ pub fn do() !void {
                     try appendWires(&outlist, wirelist);
                     try appendDoors(&outlist, doorlist);
                     try appendSources(&outlist, sourcelist);
+                    try appendFoci(&outlist, focilist);
                 },
             }
         }
@@ -194,6 +200,27 @@ pub fn appendSources(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Obje
 
     for (sourcelist.items) |obj| {
         var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y, 8)) });
+        try outlist.appendSlice(sourcef);
+    }
+    try outlist.appendSlice("};\n");
+}
+
+pub fn appendFoci(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Object)) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const focus: [{}]AABB = [_]AABB{{", .{sourcelist.items.len});
+    try outlist.appendSlice(outcontent);
+
+    for (sourcelist.items) |obj| {
+        var sourcef = try std.fmt.bufPrint(
+            &outbuffer,
+            "AABB{{ .pos = Vec2{{ {}, {} }}, .size = Vec2{{ {}, {} }} }}",
+            .{
+                @floatToInt(i32, @divTrunc(obj.x, 8)),
+                @floatToInt(i32, @divTrunc(obj.y, 8)),
+                @floatToInt(i32, @divTrunc(obj.width, 8)),
+                @floatToInt(i32, @divTrunc(obj.height, 8)),
+            },
+        );
         try outlist.appendSlice(sourcef);
     }
     try outlist.appendSlice("};\n");
