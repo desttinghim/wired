@@ -187,12 +187,10 @@ fn showErr(msg: []const u8) noreturn {
 export fn start() void {
     particles = ParticleSystem.init();
 
-    circuit = Circuit.init();
-    map = Map.init(fba.allocator()) catch showErr("Init map");
+    circuit = Circuit.init(&assets.conduit, assets.conduit_size);
+    map = Map.init(&assets.solid, assets.solid_size);
 
     camera = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
-    circuit.load(&assets.conduit, assets.conduit_size);
-    map.load(&assets.solid, assets.solid_size);
 
     const tile_size = Vec2{ 8, 8 };
     const offset = Vec2{ 4, 8 };
@@ -229,6 +227,10 @@ export fn start() void {
 
     for (assets.sources) |source| {
         circuit.addSource(source);
+    }
+
+    for (assets.doors) |door| {
+        circuit.addDoor(door);
     }
 
     updateCircuit();
@@ -432,6 +434,11 @@ fn updateCircuit() void {
         const cellBegin = util.world2cell(begin.pos);
         const cellEnd = util.world2cell(end.pos);
         if (circuit.isEnabled(cellBegin) or circuit.isEnabled(cellEnd)) wire.enabled = true;
+    }
+    const enabledDoors = circuit.enabledDoors();
+    for (enabledDoors.constSlice()) |door| {
+        w4.tracef("here");
+        map.set_cell(door, 0);
     }
 }
 

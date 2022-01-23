@@ -19,26 +19,32 @@ const tilemap_width = 16;
 const tilemap_height = 16;
 const tilemap_stride = 128;
 
-alloc: std.mem.Allocator,
+const UpdateMap = util.Map(Cell, u8, MAXCELLS);
+
 tiles: []const u8,
+tile_updates: UpdateMap,
 map_size: Vec2,
 
-pub fn init(alloc: std.mem.Allocator) !@This() {
+pub fn init(map: []const u8, map_size: Vec2) @This() {
     var this = @This(){
-        .alloc = alloc,
-        .tiles = &assets.solid,
-        .map_size = assets.solid_size,
+        .tiles = map,
+        .tile_updates = UpdateMap.init(),
+        .map_size = map_size,
     };
     return this;
 }
 
-pub fn load(this: *@This(), map: []const u8, map_size: Vec2) void {
-    this.tiles = map;
-    this.map_size = map_size;
+pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
+    this.tile_updates.set(cell, tile);
 }
 
-pub fn deinit(this: @This()) void {
-    this.alloc.free(this.tiles);
+pub fn get_cell(this: @This(), cell: Cell) ?u8 {
+    if (this.tile_updates.get_const(cell)) |tile| return tile;
+    const x = cell[0];
+    const y = cell[1];
+    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
+    const i = x + y * this.map_size[0];
+    return this.tiles[@intCast(u32, i)];
 }
 
 pub fn draw(this: @This(), offset: Vec2) void {
@@ -47,9 +53,9 @@ pub fn draw(this: @This(), offset: Vec2) void {
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
+            const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) } + offset;
             const pos = Vec2{ @intCast(i32, x), @intCast(i32, y) } * tile_size;
-            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, this.map_size[0]);
-            const tilePlus = this.tiles[a];
+            const tilePlus = this.get_cell(cell) orelse continue;
             if (tilePlus == 0) continue;
             const tile = tilePlus - 1;
             const t = Vec2{
@@ -100,7 +106,7 @@ pub fn collide(this: @This(), rect: util.AABB) std.BoundedArray(util.AABB, 9) {
 }
 
 pub fn isSolid(this: @This(), cell: Cell) bool {
-    if (this.getTile(cell[0], cell[1])) |tile| {
+    if (this.get_cell(cell)) |tile| {
         return tile != 0 and tile != 1;
     }
     return true;

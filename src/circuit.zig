@@ -94,7 +94,7 @@ fn get_plugs(tile: u8) Plugs {
 }
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    if (this.cell_map.getConstCell(cell)) |c| return c.tile;
+    if (this.cell_map.get_const(cell)) |c| return c.tile;
     const c = cell;
     if (c[0] < 0 or c[0] > this.map_size[0] or c[1] > this.map_size[1] or c[1] < 0) return null;
     const i = @intCast(usize, @mod(c[0], this.map_size[0]) + (c[1] * this.map_size[1]));
@@ -102,75 +102,38 @@ pub fn get_cell(this: @This(), cell: Cell) ?u8 {
 }
 
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
-    var cellstate = CellState{ .cell = cell, .tile = tile };
-    this.cell_map.setCell(cellstate);
+    var cellstate = CellState{ .tile = tile };
+    this.cell_map.set(cell, cellstate);
 }
 
 const MAXCELLS = 400;
 const MAXBRIDGES = 10;
 const MAXSOURCES = 10;
+const MAXDOORS = 10;
 
-const CellState = struct { cell: Cell, enabled: bool = false, tile: u8 };
-const CellMap = struct {
-    data: std.BoundedArray(CellState, MAXCELLS),
-    pub fn init() @This() {
-        return @This(){ .data = std.BoundedArray(CellState, MAXCELLS).init(0) catch unreachable };
-    }
-    pub fn getCell(this: *@This(), cell: Cell) ?*CellState {
-        for (this.data.slice()) |*cellstate| {
-            if (@reduce(.And, cellstate.cell == cell)) {
-                return cellstate;
-            }
-        }
-        return null;
-    }
-    pub fn getConstCell(this: @This(), cell: Cell) ?CellState {
-        for (this.data.constSlice()) |cellstate| {
-            if (@reduce(.And, cellstate.cell == cell)) {
-                return cellstate;
-            }
-        }
-        return null;
-    }
-    pub fn setCell(this: *@This(), newcell: CellState) void {
-        for (this.data.slice()) |*cellstate| {
-            if (@reduce(.And, cellstate.cell == newcell.cell)) {
-                cellstate.* = newcell;
-                return;
-            }
-        }
-        this.data.append(newcell) catch unreachable;
-    }
-    pub fn is_enabled(this: @This(), cell: Cell) bool {
-        if (this.getConstCell(cell)) |cellstate| {
-            return cellstate.enabled;
-        }
-        return false;
-    }
-};
+const CellState = struct { enabled: bool = false, tile: u8 };
+const CellMap = util.Map(Cell, CellState, MAXCELLS);
 
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
+const DoorState = struct { cell: Cell, enabled: bool };
 
 map: []const u8,
 map_size: Vec2,
 cell_map: CellMap,
 bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 sources: std.BoundedArray(Cell, MAXSOURCES),
+doors: std.BoundedArray(DoorState, MAXDOORS),
 
-pub fn init() @This() {
+pub fn init(map: []const u8, map_size: Vec2) @This() {
     var this = @This(){
-        .map = &assets.conduit,
-        .map_size = assets.conduit_size,
+        .map = map,
+        .map_size = map_size,
         .cell_map = CellMap.init(),
         .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
         .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
+        .doors = std.BoundedArray(DoorState, MAXDOORS).init(0) catch unreachable,
     };
     return this;
-}
-
-pub fn load(this: *@This(), map: []const u8, map_size: Vec2) void {
-    this.map = map;
-    this.map_size = map_size;
 }
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
@@ -179,12 +142,12 @@ pub fn indexOf(this: @This(), cell: Cell) ?usize {
 }
 
 pub fn enable(this: *@This(), cell: Cell) void {
-    if (this.cell_map.getCell(cell)) |c| {
+    if (this.cell_map.get(cell)) |c| {
         c.enabled = true;
         return;
     }
     const t = this.get_cell(cell) orelse unreachable;
-    this.cell_map.setCell(.{ .cell = cell, .tile = t, .enabled = true });
+    this.cell_map.set(cell, .{ .tile = t, .enabled = true });
 }
 
 pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
@@ -201,6 +164,12 @@ pub fn addSource(this: *@This(), cell: Cell) void {
     }
 }
 
+pub fn addDoor(this: *@This(), cell: Cell) void {
+    if (this.indexOf(cell)) |_| {
+        this.doors.append(.{ .cell = cell, .enabled = false }) catch unreachable;
+    }
+}
+
 pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
     var items = std.BoundedArray(usize, MAXBRIDGES).init(0) catch unreachable;
     for (this.bridges.constSlice()) |b| {
@@ -209,8 +178,19 @@ pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
     return items;
 }
 
+pub fn enabledDoors(this: @This()) std.BoundedArray(Cell, MAXDOORS) {
+    var items = std.BoundedArray(Cell, MAXDOORS).init(0) catch unreachable;
+    for (this.doors.constSlice()) |d| {
+        if (d.enabled) items.append(d.cell) catch unreachable;
+    }
+    return items;
+}
+
 pub fn isEnabled(this: @This(), cell: Cell) bool {
-    return this.cell_map.is_enabled(cell);
+    if (this.cell_map.get_const(cell)) |c| {
+        return c.enabled;
+    }
+    return false;
 }
 
 pub fn toggle(this: *@This(), c: Cell) void {
@@ -218,14 +198,13 @@ pub fn toggle(this: *@This(), c: Cell) void {
     if (this.get_cell(cell)) |tile| {
         if (is_switch(tile)) {
             const toggled = toggle_switch(tile);
-            w4.tracef("%d, %d: %d to %d", cell[0], cell[1], tile, toggled);
             this.set_cell(cell, toggled);
         }
     }
 }
 
 pub fn clear(this: *@This()) void {
-    for (this.cell_map.data.slice()) |*cell| {
+    for (this.cell_map.values.slice()) |*cell| {
         cell.enabled = false;
     }
     this.bridges.resize(0) catch unreachable;
@@ -250,7 +229,16 @@ pub fn fill(this: *@This()) usize {
         const index = this.indexOf(cell) orelse continue;
         const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
         if (hasVisited) continue;
-        const tile = this.get_cell(cell) orelse continue;
+        const tile = this.get_cell(cell) orelse {
+            for (this.doors.slice()) |*d| {
+                if (cell[0] > 9 and cell[1] > 50)
+                    w4.tracef("%d, %d %d, %d", cell[0], cell[1], d.cell[0], d.cell[1]);
+                if (@reduce(.And, d.cell == cell)) {
+                    d.enabled = true;
+                }
+            }
+            continue;
+        };
         visited.append(index) catch unreachable;
         this.enable(cell);
         count += 1;
