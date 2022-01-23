@@ -172,6 +172,7 @@ var camera = Vec2{ 0, 0 };
 const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
 var coins = std.BoundedArray(Coin, 10).init(0) catch unreachable;
 var score: u8 = 0;
+var solids_mutable = assets.solid;
 
 const anim_store = struct {
     const stand = Anim.frame(8);
@@ -203,7 +204,7 @@ export fn start() void {
     particles = ParticleSystem.init();
 
     circuit = Circuit.init(&assets.conduit, assets.conduit_size);
-    map = Map.init(&assets.solid, assets.solid_size);
+    map = Map.init(&solids_mutable, assets.solid_size);
 
     camera = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
@@ -489,7 +490,7 @@ fn updateCircuit() void {
         const cellEnd = util.world2cell(end.pos);
         if (circuit.isEnabled(cellBegin) or circuit.isEnabled(cellEnd)) wire.enabled = true;
     }
-    map.reset();
+    map.reset(&assets.solid);
     const enabledDoors = circuit.enabledDoors();
     for (enabledDoors.constSlice()) |door| {
         map.set_cell(door, 0);
