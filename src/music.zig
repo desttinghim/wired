@@ -70,6 +70,20 @@ pub const Procedural = struct {
         return midiNote[this.root + this.scale[((this.seed * t) % 313) % 8]];
     }
 
+    pub fn isBeat(this: *@This(), beat: usize) bool {
+        const beatProgress = this.tick % this.beat;
+        const beatTotal = @divTrunc(this.tick, this.beat);
+        const currentBeat = beatTotal % this.beatsPerBar;
+        return (beatProgress == 0 and currentBeat == beat);
+    }
+
+    pub fn isDrumBeat(this: *@This()) bool {
+        return switch (this.intensity) {
+            .calm => this.isBeat(0),
+            .active, .danger => this.isBeat(0) or this.isBeat(this.beatsPerBar / 2),
+        };
+    }
+
     pub fn getNext(this: *@This(), dt: u32) MusicCommand {
         var cmd = MusicCommand.init(0) catch unreachable;
         const beatProgress = this.tick % this.beat;

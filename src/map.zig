@@ -38,13 +38,24 @@ pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
     this.tile_updates.set(cell, tile);
 }
 
-pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    if (this.tile_updates.get_const(cell)) |tile| return tile;
+pub fn reset(this: *@This()) void {
+    var updates = this.tile_updates.values.slice();
+    for (this.tile_updates.keys.slice()) |key, i| {
+        updates[i] = this.get_cell_raw(key).?;
+    }
+}
+
+fn get_cell_raw(this: @This(), cell: Cell) ?u8 {
     const x = cell[0];
     const y = cell[1];
     if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
     return this.tiles[@intCast(u32, i)];
+}
+
+pub fn get_cell(this: @This(), cell: Cell) ?u8 {
+    if (this.tile_updates.get_const(cell)) |tile| return tile;
+    return this.get_cell_raw(cell);
 }
 
 pub fn draw(this: @This(), offset: Vec2) void {

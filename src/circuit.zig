@@ -207,6 +207,9 @@ pub fn clear(this: *@This()) void {
     for (this.cell_map.values.slice()) |*cell| {
         cell.enabled = false;
     }
+    for (this.doors.slice()) |*door| {
+        door.enabled = false;
+    }
     this.bridges.resize(0) catch unreachable;
 }
 
@@ -231,8 +234,6 @@ pub fn fill(this: *@This()) usize {
         if (hasVisited) continue;
         const tile = this.get_cell(cell) orelse {
             for (this.doors.slice()) |*d| {
-                if (cell[0] > 9 and cell[1] > 50)
-                    w4.tracef("%d, %d %d, %d", cell[0], cell[1], d.cell[0], d.cell[1]);
                 if (@reduce(.And, d.cell == cell)) {
                     d.enabled = true;
                 }

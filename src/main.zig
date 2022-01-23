@@ -243,7 +243,7 @@ export fn update() void {
     for (wires.slice()) |*wire| {
         wirePhysicsProcess(1, wire);
         if (wire.enabled) {
-            if (time % 60 == 0) {
+            if (music.isDrumBeat()) {
                 if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
                 if (!wire.end().pinned) particles.createNRandom(wire.end().pos, 8);
             }
@@ -263,6 +263,8 @@ export fn update() void {
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
     drawProcess(1, &player.pos, &player.sprite);
 
+    camera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+
     map.draw(camera);
     circuit.draw(camera);
 
@@ -281,9 +283,6 @@ export fn update() void {
             circuit.isEnabled(pos + util.Dir.right);
         if (shouldHum) {
             w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
-            // music.newIntensity = .active;
-        } else {
-            // music.newIntensity = .calm;
         }
     }
 
@@ -435,9 +434,9 @@ fn updateCircuit() void {
         const cellEnd = util.world2cell(end.pos);
         if (circuit.isEnabled(cellBegin) or circuit.isEnabled(cellEnd)) wire.enabled = true;
     }
+    map.reset();
     const enabledDoors = circuit.enabledDoors();
     for (enabledDoors.constSlice()) |door| {
-        w4.tracef("here");
         map.set_cell(door, 0);
     }
 }
