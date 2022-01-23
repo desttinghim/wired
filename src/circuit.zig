@@ -1,5 +1,6 @@
 const std = @import("std");
 const util = @import("util.zig");
+const assets = @import("assets");
 
 const Vec2 = util.Vec2;
 const Cell = util.Cell;
@@ -20,7 +21,7 @@ pub fn is_conduit(tile: u8) bool {
 }
 
 pub fn is_switch(tile: u8) bool {
-    return tile == 27 and tile == 28;
+    return tile == 27 or tile == 28;
 }
 
 pub fn toggle_switch(tile: u8) u8 {
@@ -93,43 +94,76 @@ fn get_plugs(tile: u8) Plugs {
 }
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    const c = cell - this.offset;
-    if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return null;
-    const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
-    return if (this.cells[i].tile != 0) this.cells[i].tile - 1 else null;
+    if (this.cell_map.getConstCell(cell)) |c| return c.tile;
+    const c = cell;
+    if (c[0] < 0 or c[0] > this.map_size[0] or c[1] > this.map_size[1] or c[1] < 0) return null;
+    const i = @intCast(usize, @mod(c[0], this.map_size[0]) + (c[1] * this.map_size[1]));
+    return if (this.map[i] != 0) this.map[i] - 1 else null;
 }
 
-pub fn set_cell(this: *@This(), c: Cell, tile: u8) void {
-    if (c[0] < 0 or c[0] > 19 or c[1] > 19 or c[1] < 0) return;
-    const i = @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
-    this.cells[i].tile = tile + 1;
+pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
+    var cellstate = CellState{ .cell = cell, .tile = tile };
+    this.cell_map.setCell(cellstate);
 }
 
-fn index2cell(i: usize) Cell {
-    return Vec2{ i % 20, @divTrunc(i, 20) };
-}
-
-fn cell2index(c: Cell) ?usize {
-    if (c[0] < 0 or c[0] >= 20 or c[1] >= 20 or c[1] < 0) return null;
-    return @intCast(usize, @mod(c[0], 20) + (c[1] * 20));
-}
-
-const CellState = struct { enabled: bool = false, tile: u8 };
 const MAXCELLS = 400;
 const MAXBRIDGES = 10;
 const MAXSOURCES = 10;
-const CellMap = [MAXCELLS]CellState;
+
+const CellState = struct { cell: Cell, enabled: bool = false, tile: u8 };
+const CellMap = struct {
+    data: std.BoundedArray(CellState, MAXCELLS),
+    pub fn init() @This() {
+        return @This(){ .data = std.BoundedArray(CellState, MAXCELLS).init(0) catch unreachable };
+    }
+    pub fn getCell(this: *@This(), cell: Cell) ?*CellState {
+        for (this.data.slice()) |*cellstate| {
+            if (@reduce(.And, cellstate.cell == cell)) {
+                return cellstate;
+            }
+        }
+        return null;
+    }
+    pub fn getConstCell(this: @This(), cell: Cell) ?CellState {
+        for (this.data.constSlice()) |cellstate| {
+            if (@reduce(.And, cellstate.cell == cell)) {
+                return cellstate;
+            }
+        }
+        return null;
+    }
+    pub fn setCell(this: *@This(), newcell: CellState) void {
+        for (this.data.slice()) |*cellstate| {
+            if (@reduce(.And, cellstate.cell == newcell.cell)) {
+                cellstate.* = newcell;
+                return;
+            }
+        }
+        this.data.append(newcell) catch unreachable;
+    }
+    pub fn is_enabled(this: @This(), cell: Cell) bool {
+        if (this.getConstCell(cell)) |cellstate| {
+            return cellstate.enabled;
+        }
+        return false;
+    }
+};
+
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 
 offset: Cell,
-cells: CellMap,
+map: []const u8,
+map_size: Vec2,
+cell_map: CellMap,
 bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 sources: std.BoundedArray(Cell, MAXSOURCES),
 
 pub fn init() @This() {
     var this = @This(){
         .offset = Cell{ 0, 0 },
-        .cells = undefined,
+        .map = &assets.conduit,
+        .map_size = assets.conduit_size,
+        .cell_map = CellMap.init(),
         .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
         .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
     };
@@ -138,25 +172,31 @@ pub fn init() @This() {
 
 pub fn load(this: *@This(), offset: Cell, map: []const u8, map_size: Vec2) void {
     this.offset = offset;
-    var y: usize = 0;
-    while (y < 20) : (y += 1) {
-        var x: usize = 0;
-        while (x < 20) : (x += 1) {
-            const i = x + y * 20;
-            const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
-            this.cells[i].tile = map[a];
-        }
-    }
+    this.map = map;
+    this.map_size = map_size;
+    // var y: usize = 0;
+    // while (y < 20) : (y += 1) {
+    //     var x: usize = 0;
+    //     while (x < 20) : (x += 1) {
+    //         const i = x + y * 20;
+    //         const a = (@intCast(usize, offset[0]) + x) + (@intCast(usize, offset[1]) + y) * @intCast(usize, map_size[0]);
+    //         this.cells[i].tile = map[a];
+    //     }
+    // }
 }
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
-    return cell2index(cell - this.offset);
+    if (cell[0] < 0 or cell[0] >= this.map_size[0] or cell[1] >= this.map_size[1] or cell[1] < 0) return null;
+    return @intCast(usize, @mod(cell[0], this.map_size[0]) + (cell[1] * this.map_size[1]));
 }
 
 pub fn enable(this: *@This(), cell: Cell) void {
-    if (this.indexOf(cell)) |c| {
-        this.cells[c].enabled = true;
+    if (this.cell_map.getCell(cell)) |c| {
+        c.enabled = true;
+        return;
     }
+    const t = this.get_cell(cell) orelse unreachable;
+    this.cell_map.setCell(.{ .cell = cell, .tile = t, .enabled = true });
 }
 
 pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
@@ -182,23 +222,22 @@ pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
 }
 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
-    if (this.indexOf(cell)) |c| {
-        return this.cells[c].enabled;
-    }
-    return false;
+    return this.cell_map.is_enabled(cell);
 }
 
 pub fn toggle(this: *@This(), c: Cell) void {
-    const cell = c - this.offset;
+    const cell = c;
     if (this.get_cell(cell)) |tile| {
         if (is_switch(tile)) {
-            this.set_cell(cell, toggle_switch(tile));
+            const toggled = toggle_switch(tile);
+            w4.tracef("%d, %d: %d to %d", cell[0], cell[1], tile, toggled);
+            this.set_cell(cell, toggled);
         }
     }
 }
 
 pub fn clear(this: *@This()) void {
-    for (this.cells) |*cell| {
+    for (this.cell_map.data.slice()) |*cell| {
         cell.enabled = false;
     }
     this.bridges.resize(0) catch unreachable;
@@ -214,16 +253,17 @@ const w4 = @import("wasm4.zig");
 pub fn fill(this: *@This()) usize {
     const Queue = util.Queue(Cell, MAXCELLS);
     var count: usize = 0;
-    var visited: [MAXCELLS]bool = [_]bool{false} ** MAXCELLS;
+    var visited = std.BoundedArray(usize, MAXCELLS).init(0) catch unreachable;
     var q = Queue.init();
     for (this.sources.slice()) |source| {
         q.insert(source);
     }
     while (q.remove()) |cell| {
         const index = this.indexOf(cell) orelse continue;
+        const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
+        if (hasVisited) continue;
         const tile = this.get_cell(cell) orelse continue;
-        if (visited[index]) continue;
-        visited[index] = true;
+        visited.append(index) catch unreachable;
         this.enable(cell);
         count += 1;
         for (get_inputs(tile)) |conductor, i| {
@@ -246,4 +286,37 @@ pub fn fill(this: *@This()) usize {
         }
     }
     return count;
+}
+
+const width = 20;
+const height = 20;
+const tile_size = Vec2{ 8, 8 };
+const tilemap_width = 16;
+const tilemap_height = 16;
+const tilemap_stride = 128;
+
+pub fn draw(this: @This()) void {
+    var y: usize = 0;
+    while (y < height) : (y += 1) {
+        var x: usize = 0;
+        while (x < width) : (x += 1) {
+            const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) };
+            const pos = cell * tile_size;
+            const tile = this.get_cell(cell + this.offset) orelse continue;
+            if (tile == 0) continue;
+            if (this.isEnabled(cell + this.offset)) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
+            const t = Vec2{
+                @intCast(i32, (tile % tilemap_width) * tile_size[0]),
+                @intCast(i32, (tile / tilemap_width) * tile_size[0]),
+            };
+            w4.blitSub(
+                &assets.tiles,
+                pos,
+                tile_size,
+                t,
+                tilemap_stride,
+                .{ .bpp = .b2 },
+            );
+        }
+    }
 }

@@ -253,17 +253,9 @@ export fn update() void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
     drawProcess(1, &player.pos, &player.sprite);
-    map.draw();
 
-    for (circuit.cells) |cell, i| {
-        const tilePlus = cell.tile;
-        if (tilePlus == 0) continue;
-        if (circuit.cells[i].enabled) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
-        const tile = tilePlus - 1;
-        const t = w4.Vec2{ @intCast(i32, (tile % 16) * 8), @intCast(i32, (tile / 16) * 8) };
-        const pos = w4.Vec2{ @intCast(i32, (i % 20) * 8), @intCast(i32, (i / 20) * 8) };
-        w4.blitSub(&assets.tiles, pos, .{ 8, 8 }, t, 128, .{ .bpp = .b2 });
-    }
+    map.draw();
+    circuit.draw();
 
     for (wires.slice()) |*wire| {
         wireDrawProcess(1, wire);
@@ -287,7 +279,7 @@ export fn update() void {
     }
 
     if (indicator) |details| {
-        const pos = details.pos;
+        const pos = details.pos - (map.offset * Map.tile_size);
         const stage = @divTrunc((time % 60), 30);
         var size = Vec2{ 0, 0 };
         switch (stage) {
@@ -333,8 +325,9 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
 
     if (control.grabbing == null) {
         if (circuit.get_cell(cell)) |tile| {
+            // w4.tracef("%d, %d: %d", cell[0], cell[1], tile);
             if (Circuit.is_switch(tile)) {
-                indicator = .{ .t = .lever, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 } };
+                indicator = .{ .t = .lever, .pos = cell * Map.tile_size + Vec2{ 4, 4 } };
                 if (input.btnp(.one, .two)) {
                     circuit.toggle(cell);
                     updateCircuit();
@@ -492,7 +485,8 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
     w4.DRAW_COLORS.* = if (wire.enabled) 0x0002 else 0x0003;
     for (nodes) |node, i| {
         if (i == 0) continue;
-        w4.line(vec2ftovec2(nodes[i - 1].pos), vec2ftovec2(node.pos));
+        const offset = (map.offset * Map.tile_size);
+        w4.line(vec2ftovec2(nodes[i - 1].pos) - offset, vec2ftovec2(node.pos) - offset);
     }
     wire.enabled = false;
 }
