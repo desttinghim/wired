@@ -19,43 +19,36 @@ const tilemap_width = 16;
 const tilemap_height = 16;
 const tilemap_stride = 128;
 
-const UpdateMap = util.Map(Cell, u8, MAXCELLS);
-
-tiles: []const u8,
-tile_updates: UpdateMap,
+tiles: []u8,
 map_size: Vec2,
 
-pub fn init(map: []const u8, map_size: Vec2) @This() {
+pub fn init(map: []u8, map_size: Vec2) @This() {
     var this = @This(){
         .tiles = map,
-        .tile_updates = UpdateMap.init(),
         .map_size = map_size,
     };
     return this;
 }
 
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
-    this.tile_updates.set(cell, tile);
+    const x = cell[0];
+    const y = cell[1];
+    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) unreachable;
+    const i = x + y * this.map_size[0];
+    this.tiles[@intCast(usize, i)] = tile;
 }
 
-pub fn reset(this: *@This()) void {
-    var updates = this.tile_updates.values.slice();
-    for (this.tile_updates.keys.slice()) |key, i| {
-        updates[i] = this.get_cell_raw(key).?;
-    }
+pub fn reset(this: *@This(), initialState: []const u8) void {
+    std.debug.assert(initialState.len == this.tiles.len);
+    std.mem.copy(u8, this.tiles, initialState);
 }
 
-fn get_cell_raw(this: @This(), cell: Cell) ?u8 {
+pub fn get_cell(this: @This(), cell: Cell) ?u8 {
     const x = cell[0];
     const y = cell[1];
     if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
     return this.tiles[@intCast(u32, i)];
-}
-
-pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    if (this.tile_updates.get_const(cell)) |tile| return tile;
-    return this.get_cell_raw(cell);
 }
 
 pub fn draw(this: @This(), offset: Vec2) void {
