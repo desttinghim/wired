@@ -55,6 +55,13 @@ pub const AABB = struct {
     pub fn addv(this: @This(), vec2f: Vec2f) @This() {
         return @This(){ .pos = this.pos + vec2f, .size = this.size };
     }
+
+    pub fn overlaps(a: @This(), b: @This()) bool {
+        return a.pos[0] < b.pos[0] + b.size[0] and
+            a.pos[0] + a.size[0] > b.pos[0] and
+            a.pos[1] < b.pos[1] + b.size[1] and
+            a.pos[1] + a.size[1] > b.pos[1];
+    }
 };
 
 pub fn Queue(comptime T: type, len: usize) type {

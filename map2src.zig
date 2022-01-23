@@ -15,12 +15,13 @@ const Point = struct {
 const Object = struct {
     height: f64 = 0,
     id: u64 = 0,
+    gid: u64 = 0,
     name: []const u8,
     point: bool = false,
     polyline: []Point = &.{},
     properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": enum { wire, source, door, spawn, focus },
+    @"type": enum { wire, source, door, spawn, focus, coin },
     visible: bool = true,
     width: f64 = 0,
     x: f64 = 0,
@@ -62,7 +63,7 @@ const MapType = struct {
 };
 
 const KB = 1024;
-var heap: [128 * KB]u8 = undefined;
+var heap: [256 * KB]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&heap);
 var alloc = fba.allocator();
 var verbose = true;
@@ -94,7 +95,7 @@ pub fn do() !void {
     while (try argsIter.next(alloc)) |arg| {
         defer alloc.free(arg);
         if (verbose) std.log.info("{s}", .{arg});
-        var filebuffer: [32 * KB]u8 = undefined;
+        var filebuffer: [64 * KB]u8 = undefined;
         var filecontents = try cwd.readFile(arg, &filebuffer);
 
         @setEvalBranchQuota(10000);
@@ -129,6 +130,9 @@ pub fn do() !void {
                     var doorlist = std.ArrayList(Object).init(alloc);
                     defer doorlist.deinit();
 
+                    var coinlist = std.ArrayList(Object).init(alloc);
+                    defer coinlist.deinit();
+
                     var sourcelist = std.ArrayList(Object).init(alloc);
                     defer sourcelist.deinit();
 
@@ -139,6 +143,7 @@ pub fn do() !void {
                         switch (obj.@"type") {
                             .wire => try wirelist.append(obj),
                             .door => try doorlist.append(obj),
+                            .coin => try coinlist.append(obj),
                             .source => try sourcelist.append(obj),
                             .focus => try focilist.append(obj),
                             .spawn => try appendSpawn(&outlist, obj),
@@ -147,6 +152,7 @@ pub fn do() !void {
 
                     try appendWires(&outlist, wirelist);
                     try appendDoors(&outlist, doorlist);
+                    try appendCoins(&outlist, coinlist);
                     try appendSources(&outlist, sourcelist);
                     try appendFoci(&outlist, focilist);
                 },
@@ -205,12 +211,24 @@ pub fn appendSources(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Obje
     try outlist.appendSlice("};\n");
 }
 
-pub fn appendFoci(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Object)) !void {
+pub fn appendCoins(outlist: *std.ArrayList(u8), coinlist: std.ArrayList(Object)) !void {
     var outbuffer: [4 * KB]u8 = undefined;
-    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const focus: [{}]AABB = [_]AABB{{", .{sourcelist.items.len});
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const coins: [{}]Vec2 = [_]Vec2{{", .{coinlist.items.len});
     try outlist.appendSlice(outcontent);
 
-    for (sourcelist.items) |obj| {
+    for (coinlist.items) |obj| {
+        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y - 8, 8)) });
+        try outlist.appendSlice(sourcef);
+    }
+    try outlist.appendSlice("};\n");
+}
+
+pub fn appendFoci(outlist: *std.ArrayList(u8), focilist: std.ArrayList(Object)) !void {
+    var outbuffer: [4 * KB]u8 = undefined;
+    var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const focus: [{}]AABB = [_]AABB{{", .{focilist.items.len});
+    try outlist.appendSlice(outcontent);
+
+    for (focilist.items) |obj| {
         var sourcef = try std.fmt.bufPrint(
             &outbuffer,
             "AABB{{ .pos = Vec2{{ {}, {} }}, .size = Vec2{{ {}, {} }} }}",

@@ -53,6 +53,7 @@ pub const Procedural = struct {
     walking: bool = false,
     intensity: Intensity = .calm,
     newIntensity: ?Intensity = null,
+    collect: ?struct { score: u8, start: usize, end: usize } = null,
 
     pub fn init(root: Note, scale: []const usize, seed: usize) @This() {
         return @This(){
@@ -84,6 +85,12 @@ pub const Procedural = struct {
         };
     }
 
+    pub fn playCollect(this: *@This(), score: u8) void {
+        const beatTotal = @divTrunc(this.tick, this.beat);
+        const length: u8 = if (score > 3) 2 else 1;
+        this.collect = .{ .score = score, .start = beatTotal + 1, .end = beatTotal + (this.beatsPerBar * length) + 1 };
+    }
+
     pub fn getNext(this: *@This(), dt: u32) MusicCommand {
         var cmd = MusicCommand.init(0) catch unreachable;
         const beatProgress = this.tick % this.beat;
@@ -92,16 +99,22 @@ pub const Procedural = struct {
         const bar = @divTrunc(beatTotal, this.beatsPerBar);
         this.tick += dt;
         if (beat == 0) this.intensity = this.newIntensity orelse this.intensity;
-        const playNote = beat % 2 == 0 and bar % 4 < 2;
-        if (this.intensity.atLeast(.active) and playNote and beatProgress == 0) {
-            // const notelen = @intCast(u8, this.beat * this.beatsPerBar);
-            cmd.append(Sfx{
-                .freq = .{ .start = this.nextNote(this.note) },
-                .duration = .{ .sustain = 5, .release = 5 },
-                .volume = 5,
-                .flags = .{ .channel = .pulse2, .mode = .p25 },
-            }) catch unreachable;
-            this.note += 1;
+        if (this.collect) |collect| {
+            const playNote = if (collect.score < 6) beat % 2 == 0 else beat % 4 != 3;
+            if (beatTotal >= collect.start and beatTotal < collect.end and playNote and beatProgress == 0) {
+                // const notelen = @intCast(u8, this.beat * this.beatsPerBar);
+                cmd.append(Sfx{
+                    .freq = .{ .start = this.nextNote(this.note) },
+                    .duration = .{ .sustain = 5, .release = 5 },
+                    .volume = 25,
+                    .flags = .{ .channel = .pulse2, .mode = .p25 },
+                }) catch unreachable;
+                this.note += 1;
+            }
+            if (bar > collect.end) {
+                w4.tracef("end collect");
+                this.collect = null;
+            }
         }
         if (this.intensity.atLeast(.calm) and beat == 0 and beatProgress == 0) cmd.append(.{
             .freq = .{ .start = 220, .end = 110 },
@@ -118,7 +131,7 @@ pub const Procedural = struct {
         if (this.walking and beat % 3 == 1 and beatProgress == 7) cmd.append(.{
             .freq = .{ .start = 1761, .end = 1 },
             .duration = .{ .release = 5 },
-            .volume = 5,
+            .volume = 25,
             .flags = .{ .channel = .noise },
         }) catch unreachable;
         return cmd;

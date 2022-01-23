@@ -101,6 +101,10 @@ const ParticleSystem = struct {
         var physics = .{ .gravity = Vec2f{ 0, 0.1 }, .friction = Vec2f{ 0.1, 0.1 } };
         var remove = std.BoundedArray(usize, MAXPARTICLES).init(0) catch unreachable;
         for (this.particles.slice()) |*part, i| {
+            if (!inView(part.pos.pos)) {
+                remove.append(i) catch unreachable;
+                continue;
+            }
             velocityProcess(1, &part.pos);
             physicsProcess(1, &part.pos, &physics);
             part.life -= 1;
@@ -135,6 +139,13 @@ const ParticleSystem = struct {
     }
 };
 
+fn inView(vec: Vec2f) bool {
+    return @reduce(
+        .And,
+        @divTrunc(util.world2cell(vec), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20)) == camera,
+    );
+}
+
 fn randRange(min: i32, max: i32) i32 {
     return random.intRangeLessThanBiased(i32, min, max);
 }
@@ -158,6 +169,9 @@ var player: Player = undefined;
 var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 var wires = std.BoundedArray(Wire, 10).init(0) catch unreachable;
 var camera = Vec2{ 0, 0 };
+const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
+var coins = std.BoundedArray(Coin, 10).init(0) catch unreachable;
+var score: u8 = 0;
 
 const anim_store = struct {
     const stand = Anim.frame(8);
@@ -165,6 +179,7 @@ const anim_store = struct {
     const jump = Anim.frame(13);
     const fall = Anim.frame(14);
     const wallSlide = Anim.frame(15);
+    const coin = Anim.simple(15, &[_]usize{ 4, 5, 6 });
 };
 
 const AnimData = []const Anim.Ops;
@@ -206,6 +221,15 @@ export fn start() void {
         },
         .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
     };
+
+    for (assets.coins) |coin| {
+        coins.append(.{
+            .pos = Pos.init(util.vec2ToVec2f(coin * tile_size)),
+            .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
+            .anim = Anim{ .anim = &anim_store.coin },
+            .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
+        }) catch unreachable;
+    }
 
     for (assets.wire) |wire| {
         const begin = vec2tovec2f(wire.p1);
@@ -263,6 +287,29 @@ export fn update() void {
     w4.rect(.{ 0, 0 }, .{ 160, 160 });
     drawProcess(1, &player.pos, &player.sprite);
 
+    {
+        var remove = std.BoundedArray(usize, 10).init(0) catch unreachable;
+        for (coins.slice()) |*coin, i| {
+            staticAnimProcess(1, &coin.sprite, &coin.anim);
+            drawProcess(1, &coin.pos, &coin.sprite);
+            if (coin.area.addv(coin.pos.pos).overlaps(player.kinematic.col.addv(player.pos.pos))) {
+                score += 1;
+                remove.append(i) catch unreachable;
+                music.playCollect(score);
+            }
+        }
+        while (remove.popOrNull()) |i| {
+            _ = coins.swapRemove(i);
+        }
+        // if (score < 3) {
+        //     music.newIntensity = .calm;
+        // } else if (score < 6) {
+        //     music.newIntensity = .active;
+        // } else {
+        //     music.newIntensity = .danger;
+        // }
+    }
+
     camera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
     map.draw(camera);
@@ -308,6 +355,21 @@ export fn update() void {
             .plug => w4.rect(pos - half, size),
             .lever => w4.rect(pos - half, size),
         }
+    }
+
+    // Score UI
+    {
+        const playerPos = util.vec2fToVec2(player.pos.pos) - camera * Map.tile_size;
+        // w4.tracef("%d, %d", playerPos[0], playerPos[1]);
+        const scoreY: u8 = if (playerPos[1] > 80) 0 else 152;
+        const scoreX: u8 = if (playerPos[0] > 80) 0 else 160 - 64;
+        w4.DRAW_COLORS.* = 0x0004;
+        w4.rect(Vec2{ scoreX, scoreY }, Vec2{ 64, 8 });
+        w4.DRAW_COLORS.* = 0x0042;
+        w4.text("Score", Vec2{ scoreX, scoreY });
+        var scoreDigits = [2]u8{ '0', '0' };
+        scoreDigits[1] = '0' + score;
+        w4.text(&scoreDigits, Vec2{ scoreX + 48, scoreY });
     }
 
     // Music
@@ -418,14 +480,7 @@ fn updateCircuit() void {
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
     }
-    var count = circuit.fill();
-    if (count < 30) {
-        music.newIntensity = .calm;
-    } else if (count < 60) {
-        music.newIntensity = .active;
-    } else {
-        music.newIntensity = .danger;
-    }
+    _ = circuit.fill();
     for (wires.slice()) |*wire| {
         const begin = wire.begin();
         const end = wire.end();
@@ -514,7 +569,7 @@ fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
 }
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
-    w4.DRAW_COLORS.* = 0x0010;
+    w4.DRAW_COLORS.* = 0x2210;
     const fpos = pos.pos + sprite.offset;
     const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) } - camera * Map.tile_size;
     const index = sprite.index;

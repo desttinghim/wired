@@ -134,6 +134,8 @@ fn get_outputs(tile: u8) Current {
         46 => .{ false, true, false, false },
         // Switch
         27, 29 => .{ true, false, true, false },
+        28 => .{ false, false, false, true },
+        30 => .{ false, true, false, false },
         // Logic
         // Calculated in fill
         // 59 => .{ false, false, false, false },
