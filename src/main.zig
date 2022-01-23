@@ -500,6 +500,7 @@ fn updateCircuit() void {
 fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
+    if (!inView(wire.begin().pos) or !inView(wire.end().pos)) return;
     var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.1, 0.1 } };
     var kinematic = Kinematic{ .col = AABB{ .pos = Vec2f{ -1, -1 }, .size = Vec2f{ 1, 1 } } };
 
@@ -550,6 +551,7 @@ fn constrainNodes(prevNode: *Pos, node: *Pos) void {
 }
 
 fn wireDrawProcess(_: f32, wire: *Wire) void {
+    if (!inView(wire.begin().pos) or !inView(wire.end().pos)) return;
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
 
@@ -570,6 +572,7 @@ fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
 }
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
+    if (!inView(pos.pos)) return;
     w4.DRAW_COLORS.* = 0x2210;
     const fpos = pos.pos + sprite.offset;
     const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) } - camera * Map.tile_size;
