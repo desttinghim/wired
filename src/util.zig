@@ -81,39 +81,3 @@ pub fn Queue(comptime T: type, len: usize) type {
     };
 }
 
-pub fn Map(comptime K: type, comptime V: type, len: usize) type {
-    return struct {
-        keys: std.BoundedArray(K, len),
-        values: std.BoundedArray(V, len),
-        pub fn init() @This() {
-            return @This(){
-                .keys = std.BoundedArray(K, len).init(0) catch unreachable,
-                .values = std.BoundedArray(V, len).init(0) catch unreachable,
-            };
-        }
-        pub fn get(this: *@This(), key: K) ?*V {
-            for (this.keys.slice()) |k, i| {
-                if (@reduce(.And, key == k)) {
-                    return &this.values.slice()[i];
-                }
-            }
-            return null;
-        }
-        pub fn get_const(this: @This(), key: Cell) ?V {
-            for (this.keys.constSlice()) |k, i| {
-                if (@reduce(.And, key == k)) {
-                    return this.values.constSlice()[i];
-                }
-            }
-            return null;
-        }
-        pub fn set(this: *@This(), key: K, new: V) void {
-            if (this.get(key)) |v| {
-                v.* = new;
-            } else {
-                this.keys.append(key) catch unreachable;
-                this.values.append(new) catch unreachable;
-            }
-        }
-    };
-}

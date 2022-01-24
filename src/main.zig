@@ -173,6 +173,8 @@ const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
 var coins = std.BoundedArray(Coin, 20).init(0) catch unreachable;
 var score: u8 = 0;
 var solids_mutable = assets.solid;
+var conduit_mutable = assets.conduit;
+var conduitLevels_mutable: [conduit_mutable.len]u8 = undefined;
 
 const anim_store = struct {
     const stand = Anim.frame(8);
@@ -203,7 +205,8 @@ fn showErr(msg: []const u8) noreturn {
 export fn start() void {
     particles = ParticleSystem.init();
 
-    circuit = Circuit.init(&assets.conduit, assets.conduit_size);
+    std.mem.set(u8, &conduitLevels_mutable, 0);
+    circuit = Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
     map = Map.init(&solids_mutable, assets.solid_size);
 
     camera = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));

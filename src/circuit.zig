@@ -172,16 +172,14 @@ fn get_plugs(tile: u8) Plugs {
 }
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    if (this.cell_map.get_const(cell)) |c| return c.tile;
-    const c = cell;
-    if (c[0] < 0 or c[0] > this.map_size[0] or c[1] > this.map_size[1] or c[1] < 0) return null;
-    const i = @intCast(usize, @mod(c[0], this.map_size[0]) + (c[1] * this.map_size[1]));
+    const i = this.indexOf(cell) orelse return null;
     return if (this.map[i] != 0) this.map[i] - 1 else null;
 }
 
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
-    var cellData = CellData{ .tile = tile };
-    this.cell_map.set(cell, cellData);
+    const i = this.indexOf(cell) orelse return;
+    this.map[i] = tile + 1;
+    this.levels[i] = 0;
 }
 
 const MAXCELLS = 400;
@@ -190,38 +188,30 @@ const MAXSOURCES = 10;
 const MAXDOORS = 40;
 const MAXLOGIC = 40;
 
-const CellData = struct { level: u8 = 0, tile: u8 };
-const CellMap = util.Map(Cell, CellData, MAXCELLS);
+pub const CellData = struct { level: u8 = 0, tile: u8 };
 
 const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
 const DoorState = struct { cell: Cell, enabled: bool };
 
-map: []const u8,
+/// Tile id of the tiles
+map: []u8,
+/// Logic levels of the tiles
+levels: []u8,
 map_size: Vec2,
-cell_map: CellMap,
 bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 sources: std.BoundedArray(Cell, MAXSOURCES),
 doors: std.BoundedArray(DoorState, MAXDOORS),
-logic_map: std.BoundedArray(Cell, MAXLOGIC),
 
-pub fn init(map: []const u8, map_size: Vec2) @This() {
+pub fn init(map: []u8, levels: []u8, map_size: Vec2) @This() {
+    std.debug.assert(map.len == levels.len);
     var this = @This(){
         .map = map,
+        .levels = levels,
         .map_size = map_size,
-        .cell_map = CellMap.init(),
         .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
         .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
         .doors = std.BoundedArray(DoorState, MAXDOORS).init(0) catch unreachable,
-        .logic_map = std.BoundedArray(Cell, MAXLOGIC).init(0) catch unreachable,
     };
-    for (map) |tile, index| {
-        if (is_logic(tile)) {
-            const i = @intCast(i32, index);
-            const cell = Cell{ @mod(i, this.map_size[0]), @divTrunc(i, this.map_size[0]) };
-            // w4.tracef("%d, %d: %d", cell[0], cell[1], this.logic_map.len);
-            this.logic_map.append(cell) catch unreachable;
-        }
-    }
     return this;
 }
 
@@ -231,12 +221,8 @@ pub fn indexOf(this: @This(), cell: Cell) ?usize {
 }
 
 pub fn enable(this: *@This(), cell: Cell) void {
-    if (this.cell_map.get(cell)) |c| {
-        c.level += 1;
-        return;
-    }
-    const t = this.get_cell(cell) orelse return;
-    this.cell_map.set(cell, .{ .tile = t, .level = 1 });
+    const i = this.indexOf(cell) orelse return;
+    this.levels[i] += 1;
 }
 
 pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
@@ -276,10 +262,8 @@ pub fn enabledDoors(this: @This()) std.BoundedArray(Cell, MAXDOORS) {
 }
 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
-    if (this.cell_map.get_const(cell)) |c| {
-        return c.level >= 1;
-    }
-    return false;
+    const i = this.indexOf(cell) orelse return false;
+    return this.levels[i] >= 1;
 }
 
 pub fn toggle(this: *@This(), c: Cell) void {
@@ -293,9 +277,7 @@ pub fn toggle(this: *@This(), c: Cell) void {
 }
 
 pub fn clear(this: *@This()) void {
-    for (this.cell_map.values.slice()) |*cell| {
-        cell.level = 0;
-    }
+    std.mem.set(u8, this.levels, 0);
     for (this.doors.slice()) |*door| {
         door.enabled = false;
     }
@@ -335,11 +317,8 @@ pub fn fill(this: *@This()) usize {
         if (get_logic(tile)) |logic| {
             // TODO: implement other logic (though I'm pretty sure that requires a graph...)
             if (logic != .And) continue;
-            if (this.cell_map.get(cell)) |data| {
-                // Skip current loop if and isn't high enough
-                if (data.level < 2) continue;
-                q.insert(cell + util.Dir.up);
-            }
+            if (this.levels[index] < 2) continue;
+            q.insert(cell + util.Dir.up);
         }
         for (get_outputs(tile)) |conductor, i| {
             if (!conductor) continue;
