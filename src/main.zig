@@ -264,7 +264,7 @@ export fn start() void {
     updateCircuit();
 }
 
-var indicator: ?struct { pos: Vec2, t: enum { wire, plug, lever }, active: bool = false } = null;
+var indicator: ?Interaction = null;
 var time: usize = 0;
 
 export fn update() void {
@@ -305,13 +305,6 @@ export fn update() void {
         while (remove.popOrNull()) |i| {
             _ = coins.swapRemove(i);
         }
-        // if (score < 3) {
-        //     music.newIntensity = .calm;
-        // } else if (score < 6) {
-        //     music.newIntensity = .active;
-        // } else {
-        //     music.newIntensity = .danger;
-        // }
     }
 
     camera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
@@ -354,7 +347,7 @@ export fn update() void {
             w4.DRAW_COLORS.* = 0x0030;
         }
         var half = Vec2{ @divTrunc(size[0], 2), @divTrunc(size[1], 2) };
-        switch (details.t) {
+        switch (details.details) {
             .wire => w4.oval(pos - half, size),
             .plug => w4.rect(pos - half, size),
             .lever => w4.rect(pos - half, size),
@@ -364,7 +357,6 @@ export fn update() void {
     // Score UI
     {
         const playerPos = util.vec2fToVec2(player.pos.pos) - camera * Map.tile_size;
-        // w4.tracef("%d, %d", playerPos[0], playerPos[1]);
         const scoreY: u8 = if (playerPos[1] > 80) 0 else 152;
         const scoreX: u8 = if (playerPos[0] > 80) 0 else 160 - 64;
         w4.DRAW_COLORS.* = 0x0004;
@@ -387,6 +379,56 @@ export fn update() void {
     time += 1;
 }
 
+const Interaction = struct {
+    pos: Vec2,
+    details: union(enum) {
+        wire: struct { id: usize, which: usize },
+        plug: struct { wireID: usize, which: usize },
+        lever,
+    },
+    active: bool = false,
+};
+
+fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
+    const cell = util.world2cell(pos);
+    if (circuit.get_cell(cell)) |tile| {
+        if (Circuit.is_switch(tile)) {
+            return Interaction{ .details = .lever, .pos = cell * Map.tile_size + Vec2{ 4, 4 } };
+        }
+    }
+    return null;
+}
+
+fn getNearestWireInteraction(pos: Vec2f) ?Interaction {
+    // const cell = util.world2cell(pos);
+    const interactDistance = 8;
+    var newIndicator: ?Interaction = null;
+    var minDistance: f32 = interactDistance;
+    for (wires.slice()) |*wire, wireID| {
+        const begin = wire.begin().pos;
+        const end = wire.end().pos;
+        var dist = util.distancef(begin, pos);
+        if (dist < minDistance) {
+            minDistance = dist;
+            newIndicator = Interaction{
+                .details = .{ .wire = .{ .id = wireID, .which = 0 } },
+                .pos = vec2ftovec2(begin),
+                .active = wire.enabled,
+            };
+        }
+        dist = util.distancef(end, pos);
+        if (dist < minDistance) {
+            minDistance = dist;
+            newIndicator = .{
+                .details = .{ .wire = .{ .id = wireID, .which = wire.nodes.len - 1 } },
+                .pos = vec2ftovec2(end),
+                .active = wire.enabled,
+            };
+        }
+    }
+    return newIndicator;
+}
+
 fn manipulationProcess(pos: *Pos, control: *Control) void {
     var offset = switch (control.facing) {
         .left => Vec2f{ -6, -4 },
@@ -394,52 +436,22 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
         .up => Vec2f{ 0, -12 },
         .down => Vec2f{ 0, 4 },
     };
+    // TODO: add centered property
+    const centeredPos = pos.pos + Vec2f{ 0, -4 };
     const offsetPos = pos.pos + offset;
-    const cell = util.world2cell(offsetPos);
 
     if (control.grabbing == null) {
-        if (circuit.get_cell(cell)) |tile| {
-            // w4.tracef("%d, %d: %d", cell[0], cell[1], tile);
-            if (Circuit.is_switch(tile)) {
-                indicator = .{ .t = .lever, .pos = cell * Map.tile_size + Vec2{ 4, 4 } };
-                if (input.btnp(.one, .two)) {
-                    circuit.toggle(cell);
-                    updateCircuit();
-                }
-            }
-        }
-        const interactDistance = 4;
-        var minDistance: f32 = interactDistance;
-        var interactWireID: ?usize = null;
-        var which: usize = 0;
-        for (wires.slice()) |*wire, wireID| {
-            const nodes = wire.nodes.constSlice();
-            const begin = nodes[0].pos;
-            const end = nodes[wire.nodes.len - 1].pos;
-            var dist = util.distancef(begin, offsetPos);
-            if (dist < minDistance) {
-                minDistance = dist;
-                indicator = .{ .t = .wire, .pos = vec2ftovec2(begin), .active = wire.enabled };
-                interactWireID = wireID;
-                which = 0;
-            }
-            dist = util.distancef(end, offsetPos);
-            if (dist < minDistance) {
-                minDistance = dist;
-                indicator = .{ .t = .wire, .pos = vec2ftovec2(end), .active = wire.enabled };
-                interactWireID = wireID;
-                which = wire.nodes.len - 1;
-            }
-        }
-        if (interactWireID) |wireID| {
-            if (input.btnp(.one, .two)) {
-                control.grabbing = .{ .id = wireID, .which = which };
-                wires.slice()[wireID].nodes.slice()[which].pos = pos.pos + Vec2f{ 0, -4 };
-                wires.slice()[wireID].nodes.slice()[which].pinned = false;
-                updateCircuit();
-            }
+        if (getNearestCircuitInteraction(offsetPos)) |i| {
+            indicator = i;
+        } else if (getNearestWireInteraction(offsetPos)) |i| {
+            indicator = i;
+        } else if (getNearestCircuitInteraction(centeredPos)) |i| {
+            indicator = i;
+        } else if (getNearestWireInteraction(centeredPos)) |i| {
+            indicator = i;
         }
     } else if (control.grabbing) |details| {
+        const cell = util.world2cell(offsetPos);
         var wire = &wires.slice()[details.id];
         var nodes = wire.nodes.slice();
 
@@ -449,26 +461,43 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
         if (length > maxLength * 1.5) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
-            // updateCircuit = true;
-            // return;
         } else {
             nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
-            // updateCircuit = true;
         }
 
         if (Circuit.is_plug(circuit.get_cell(cell) orelse 0)) {
             const active = circuit.isEnabled(cell);
-            indicator = .{ .t = .plug, .pos = cell * @splat(2, @as(i32, 8)) + Vec2{ 4, 4 }, .active = active };
-            if (input.btnp(.one, .two)) {
-                nodes[details.which].pinned = true;
-                nodes[details.which].pos = vec2tovec2f(indicator.?.pos);
-                control.grabbing = null;
-                updateCircuit();
-            }
+            indicator = .{
+                .details = .{ .plug = .{ .wireID = details.id, .which = details.which } },
+                .pos = cell * Map.tile_size + Vec2{ 4, 4 },
+                .active = active,
+            };
         } else if (input.btnp(.one, .two)) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
-            // updateCircuit = true;
+        }
+    }
+    if (input.btnp(.one, .two)) {
+        if (indicator) |i| {
+            switch (i.details) {
+                .wire => |wire| {
+                    control.grabbing = .{ .id = wire.id, .which = wire.which };
+                    wires.slice()[wire.id].nodes.slice()[wire.which].pos = pos.pos + Vec2f{ 0, -4 };
+                    wires.slice()[wire.id].nodes.slice()[wire.which].pinned = false;
+                    updateCircuit();
+                },
+                .plug => |plug| {
+                    wires.slice()[plug.wireID].nodes.slice()[plug.which].pos = vec2tovec2f(indicator.?.pos);
+                    wires.slice()[plug.wireID].nodes.slice()[plug.which].pinned = true;
+                    control.grabbing = null;
+                    updateCircuit();
+                },
+                .lever => {
+                    const cell = @divTrunc(i.pos, Map.tile_size);
+                    circuit.toggle(cell);
+                    updateCircuit();
+                },
+            }
         }
     }
 }
