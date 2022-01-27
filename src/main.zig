@@ -399,11 +399,9 @@ fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
     return null;
 }
 
-fn getNearestWireInteraction(pos: Vec2f) ?Interaction {
-    // const cell = util.world2cell(pos);
-    const interactDistance = 8;
+fn getNearestWireInteraction(pos: Vec2f, range: f32) ?Interaction {
     var newIndicator: ?Interaction = null;
-    var minDistance: f32 = interactDistance;
+    var minDistance: f32 = range;
     for (wires.slice()) |*wire, wireID| {
         const begin = wire.begin().pos;
         const end = wire.end().pos;
@@ -431,23 +429,25 @@ fn getNearestWireInteraction(pos: Vec2f) ?Interaction {
 
 fn manipulationProcess(pos: *Pos, control: *Control) void {
     var offset = switch (control.facing) {
-        .left => Vec2f{ -6, -4 },
-        .right => Vec2f{ 6, -4 },
-        .up => Vec2f{ 0, -12 },
-        .down => Vec2f{ 0, 4 },
+        .left => Vec2f{ -6, 0 },
+        .right => Vec2f{ 6, 0 },
+        .up => Vec2f{ 0, -8 },
+        .down => Vec2f{ 0, 8 },
     };
     // TODO: add centered property
     const centeredPos = pos.pos + Vec2f{ 0, -4 };
-    const offsetPos = pos.pos + offset;
+    const offsetPos = centeredPos + offset;
 
     if (control.grabbing == null) {
-        if (getNearestCircuitInteraction(offsetPos)) |i| {
+        if (getNearestWireInteraction(offsetPos, 8)) |i| {
             indicator = i;
-        } else if (getNearestWireInteraction(offsetPos)) |i| {
+        } else if (getNearestWireInteraction(centeredPos - offset, 8)) |i| {
+            indicator = i;
+        } else if (getNearestCircuitInteraction(offsetPos)) |i| {
             indicator = i;
         } else if (getNearestCircuitInteraction(centeredPos)) |i| {
             indicator = i;
-        } else if (getNearestWireInteraction(centeredPos)) |i| {
+        } else if (getNearestCircuitInteraction(centeredPos - offset)) |i| {
             indicator = i;
         }
     } else if (control.grabbing) |details| {
