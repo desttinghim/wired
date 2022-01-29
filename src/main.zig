@@ -30,7 +30,12 @@ const Control = struct {
     facing: enum { left, right, up, down } = .right,
     grabbing: ?struct { id: usize, which: usize } = null,
 };
-const Sprite = struct { offset: Vec2f = Vec2f{ 0, 0 }, size: w4.Vec2, index: usize, flags: w4.BlitFlags };
+const Sprite = struct {
+    offset: Vec2 = Vec2{ 0, 0 },
+    size: w4.Vec2,
+    index: usize,
+    flags: w4.BlitFlags,
+};
 const StaticAnim = Anim;
 const ControlAnim = struct { anims: []AnimData, state: Anim };
 const Kinematic = struct {
@@ -169,9 +174,16 @@ var player: Player = undefined;
 var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 var wires = std.BoundedArray(Wire, 10).init(0) catch unreachable;
 var camera = Vec2{ 0, 0 };
+
 const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
 var coins = std.BoundedArray(Coin, 20).init(0) catch unreachable;
 var score: u8 = 0;
+var ScoreCoin = Sprite{
+    .size = Map.tile_size,
+    .index = 4,
+    .flags = .{ .bpp = .b2 },
+};
+
 var solids_mutable = assets.solid;
 var conduit_mutable = assets.conduit;
 var conduitLevels_mutable: [conduit_mutable.len]u8 = undefined;
@@ -357,15 +369,28 @@ export fn update() void {
     // Score UI
     {
         const playerPos = util.vec2fToVec2(player.pos.pos) - camera * Map.tile_size;
-        const scoreY: u8 = if (playerPos[1] > 80) 0 else 152;
-        const scoreX: u8 = if (playerPos[0] > 80) 0 else 160 - 64;
+        const textOffset = Vec2{ 9, 1 };
+        const textChars = 3;
+        const size = Vec2{ 8 * textChars, 8 } + textOffset;
+        const scorePos = Vec2{
+            if (playerPos[0] > 80) 0 else 160 - size[0],
+            if (playerPos[1] > 80) 0 else 160 - size[1],
+        };
+
+        // Manually convert score to text
+        var scoreDigits = [textChars]u8{ 'x', '0', '0' };
+        scoreDigits[1] = '0' + @divTrunc(score, 10);
+        scoreDigits[2] = '0' + score % 10;
+
+        // Clear background of score
         w4.DRAW_COLORS.* = 0x0004;
-        w4.rect(Vec2{ scoreX, scoreY }, Vec2{ 64, 8 });
+        w4.rect(scorePos, size);
+
+        // Draw coin
+        draw_sprite(scorePos, ScoreCoin);
+
         w4.DRAW_COLORS.* = 0x0042;
-        w4.text("Score", Vec2{ scoreX, scoreY });
-        var scoreDigits = [2]u8{ '0', '0' };
-        scoreDigits[1] = '0' + score;
-        w4.text(&scoreDigits, Vec2{ scoreX + 48, scoreY });
+        w4.text(&scoreDigits, scorePos + Vec2{ 9, 1 });
     }
 
     // Music
@@ -605,12 +630,15 @@ fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
     if (!inView(pos.pos)) return;
+    const ipos = (util.vec2fToVec2(pos.pos) + sprite.offset) - camera * Map.tile_size;
+    draw_sprite(ipos, sprite.*);
+}
+
+fn draw_sprite(pos: Vec2, sprite: Sprite) void {
     w4.DRAW_COLORS.* = 0x2210;
-    const fpos = pos.pos + sprite.offset;
-    const ipos = w4.Vec2{ @floatToInt(i32, fpos[0]), @floatToInt(i32, fpos[1]) } - camera * Map.tile_size;
     const index = sprite.index;
     const t = w4.Vec2{ @intCast(i32, (index * 8) % 128), @intCast(i32, (index * 8) / 128) };
-    w4.blitSub(&assets.tiles, ipos, sprite.size, t, 128, sprite.flags);
+    w4.blitSub(&assets.tiles, pos, sprite.size, t, 128, sprite.flags);
 }
 
 fn staticAnimProcess(_: f32, sprite: *Sprite, anim: *StaticAnim) void {
