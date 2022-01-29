@@ -517,10 +517,10 @@ fn updateCircuit() void {
     for (wires.slice()) |*wire| {
         const begin = wire.begin();
         const end = wire.end();
-        if (!begin.pinned and !end.pinned) continue;
         const cellBegin = util.world2cell(begin.pos);
         const cellEnd = util.world2cell(end.pos);
-        if (circuit.isEnabled(cellBegin) or circuit.isEnabled(cellEnd)) wire.enabled = true;
+        if ((circuit.isEnabled(cellBegin) and begin.pinned) or
+            (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
     map.reset(&assets.solid);
     const enabledDoors = circuit.enabledDoors();
@@ -532,7 +532,7 @@ fn updateCircuit() void {
 fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
-    if (!inView(wire.begin().pos) or !inView(wire.end().pos)) return;
+    if (!inView(wire.begin().pos) and !inView(wire.end().pos)) return;
     var physics = Physics{ .gravity = Vec2f{ 0, 0.25 }, .friction = Vec2f{ 0.1, 0.1 } };
     var kinematic = Kinematic{ .col = AABB{ .pos = Vec2f{ -1, -1 }, .size = Vec2f{ 1, 1 } } };
 
@@ -583,10 +583,9 @@ fn constrainNodes(prevNode: *Pos, node: *Pos) void {
 }
 
 fn wireDrawProcess(_: f32, wire: *Wire) void {
-    if (!inView(wire.begin().pos) or !inView(wire.end().pos)) return;
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
-    if (!inView(nodes[0].pos)) return;
+    if (!inView(wire.begin().pos) and !inView(wire.end().pos)) return;
 
     w4.DRAW_COLORS.* = if (wire.enabled) 0x0002 else 0x0003;
     for (nodes) |node, i| {
