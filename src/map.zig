@@ -30,17 +30,41 @@ pub fn init(map: []u8, map_size: Vec2) @This() {
     return this;
 }
 
+pub fn reset(this: *@This(), initialState: []const u8) void {
+    std.debug.assert(initialState.len == this.tiles.len);
+    std.mem.copy(u8, this.tiles, initialState);
+}
+
+pub fn write_diff(this: *@This(), initialState: []const u8, buf: anytype) !u8 {
+    var written: u8 = 0;
+    for (initialState) |init_tile, i| {
+        if (this.tiles[i] != init_tile) {
+            const x = @intCast(u8, i % @intCast(usize, this.map_size[0]));
+            const y = @intCast(u8, @divTrunc(i, @intCast(usize, this.map_size[0])));
+            const temp = [3]u8{ x, y, this.tiles[i] };
+            try buf.writeAll(&temp);
+            written += 1;
+        }
+    }
+    return written;
+}
+
+pub fn load_diff(this: *@This(), diff: []const u8) void {
+    var i: usize = 0;
+    while (i < diff.len) : (i += 3) {
+        const x = diff[i];
+        const y = diff[i + 1];
+        const tile = diff[i + 2];
+        this.set_cell(Cell{ x, y }, tile);
+    }
+}
+
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
     const x = cell[0];
     const y = cell[1];
     if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) unreachable;
     const i = x + y * this.map_size[0];
     this.tiles[@intCast(usize, i)] = tile;
-}
-
-pub fn reset(this: *@This(), initialState: []const u8) void {
-    std.debug.assert(initialState.len == this.tiles.len);
-    std.mem.copy(u8, this.tiles, initialState);
 }
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
