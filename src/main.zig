@@ -436,7 +436,7 @@ fn load() bool {
     const read = w4.diskr(&load_buf, 1024);
     w4.tracef("%d bytes read", read);
 
-    if (true) return false;
+    // if (true) return false;
     if (read <= 0) return false;
     // for (load_buf[0 .. read - 1]) |byte| w4.tracef("%d", byte);
 
@@ -459,12 +459,9 @@ fn load() bool {
         const b = reader.readByte() catch return false;
         const obj = @intToEnum(SaveObj, @truncate(u4, b));
         const id = @truncate(u4, b >> 4);
-        const x = reader.readByte() catch return false;
-        const y = reader.readByte() catch return false;
-        const cell = util.Cell{ x, y };
-        var pos = Pos.init(util.vec2ToVec2f(cell * Map.tile_size));
-        if (obj == .WireBeginPinned or obj == .WireBeginLoose or obj == .WireEndPinned or obj == .WireEndLoose)
-            pos.pos += Vec2f{ 4, 4 };
+        const x = reader.readIntBig(u16) catch return false;
+        const y = reader.readIntBig(u16) catch return false;
+        var pos = Pos.init(util.vec2ToVec2f(Vec2{ x, y }));
         switch (obj) {
             .Player => {
                 w4.tracef("player at %d, %d", x, y);
@@ -532,6 +529,10 @@ fn cell2u8(cell: util.Cell) [2]u8 {
     return [_]u8{ @intCast(u8, cell[0]), @intCast(u8, cell[1]) };
 }
 
+fn vec2u16(vec2: util.Vec2) [2]u16 {
+    return [_]u16{ @intCast(u16, vec2[0]), @intCast(u16, vec2[1]) };
+}
+
 fn save() void {
     var save_buf: [1024]u8 = undefined;
     var save_stream = std.io.fixedBufferStream(&save_buf);
@@ -547,16 +548,22 @@ fn save() void {
     save_writer.writeByte(0) catch return w4.tracef("Couldn't write conduit length");
 
     // Write player
-    const playerCell = util.world2cell(player.pos.pos);
-    save_writer.writeAll(&[_]u8{ @enumToInt(SaveObj.Player), @intCast(u8, playerCell[0]), @intCast(u8, playerCell[1]) }) catch return w4.tracef("Couldn't save player");
+    const playerPos = vec2u16(util.vec2fToVec2(player.pos.pos));
+    save_writer.writeByte(@enumToInt(SaveObj.Player)) catch return w4.tracef("Player");
+    save_writer.writeIntBig(u16, playerPos[0]) catch return;
+    save_writer.writeIntBig(u16, playerPos[1]) catch return;
+    // save_writer.writeAll(&[_]u8{ @enumToInt(SaveObj.Player), @intCast(u8, player
     var obj_len: u8 = 1;
 
     for (coins.slice()) |coin, i| {
         obj_len += 1;
         const id = @intCast(u8, @truncate(u4, i)) << 4;
-        const cell = util.world2cell(coin.pos.pos);
+        // const cell = util.world2cell(coin.pos.pos);
         save_writer.writeByte(@enumToInt(SaveObj.Coin) | id) catch return w4.tracef("Couldn't save coin");
-        save_writer.writeAll(&cell2u8(cell)) catch return;
+        const pos = vec2u16(util.vec2fToVec2(coin.pos.pos));
+        save_writer.writeIntBig(u16, pos[0]) catch return;
+        save_writer.writeIntBig(u16, pos[1]) catch return;
+        // save_writer.writeInt(&) catch return;
     }
 
     // Write wires
@@ -566,23 +573,39 @@ fn save() void {
         const end = wire.end();
         obj_len += 1;
         if (begin.pinned) {
-            const cell = util.world2cell(begin.pos);
+            // const cell = util.world2cell(begin.pos);
             save_writer.writeByte(@enumToInt(SaveObj.WireBeginPinned) | id) catch return w4.tracef("Couldn't save wire");
-            save_writer.writeAll(&cell2u8(cell)) catch return;
+            // const pos = cell2u16(cell);
+            const pos = vec2u16(util.vec2fToVec2(begin.pos));
+            save_writer.writeIntBig(u16, pos[0]) catch return;
+            save_writer.writeIntBig(u16, pos[1]) catch return;
+            // save_writer.writeAll(&cell2u8(cell)) catch return;
         } else {
-            const cell = util.world2cell(begin.pos);
+            // const cell = util.world2cell(begin.pos);
             save_writer.writeByte(@enumToInt(SaveObj.WireBeginLoose) | id) catch return w4.tracef("Couldn't save wire");
-            save_writer.writeAll(&cell2u8(cell)) catch return;
+            // const pos = cell2u16(cell);
+            const pos = vec2u16(util.vec2fToVec2(begin.pos));
+            save_writer.writeIntBig(u16, pos[0]) catch return;
+            save_writer.writeIntBig(u16, pos[1]) catch return;
+            // save_writer.writeAll(&cell2u8(cell)) catch return;
         }
         obj_len += 1;
         if (end.pinned) {
-            const cell = util.world2cell(end.pos);
+            // const cell = util.world2cell(end.pos);
             save_writer.writeByte(@enumToInt(SaveObj.WireEndPinned) | id) catch return w4.tracef("Couldn't save wire");
-            save_writer.writeAll(&cell2u8(cell)) catch return;
+            // const pos = cell2u16(cell);
+            const pos = vec2u16(util.vec2fToVec2(end.pos));
+            save_writer.writeIntBig(u16, pos[0]) catch return;
+            save_writer.writeIntBig(u16, pos[1]) catch return;
+            // save_writer.writeAll(&cell2u8(cell)) catch return;
         } else {
-            const cell = util.world2cell(end.pos);
+            // const cell = util.world2cell(end.pos);
             save_writer.writeByte(@enumToInt(SaveObj.WireEndLoose) | id) catch return w4.tracef("Couldn't save wire");
-            save_writer.writeAll(&cell2u8(cell)) catch return;
+            // const pos = cell2u16(cell);
+            const pos = vec2u16(util.vec2fToVec2(end.pos));
+            save_writer.writeIntBig(u16, pos[0]) catch return;
+            save_writer.writeIntBig(u16, pos[1]) catch return;
+            // save_writer.writeAll(&cell2u8(cell)) catch return;
         }
     }
 
