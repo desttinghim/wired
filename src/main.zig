@@ -160,11 +160,6 @@ fn randRangeF(min: f32, max: f32) f32 {
 }
 
 // Global vars
-const KB = 1024;
-var heap: [10 * KB]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&heap);
-// var world: World = World.init(fba.allocator());
-
 var map: Map = undefined;
 var circuit: Circuit = undefined;
 var particles: ParticleSystem = undefined;
@@ -253,7 +248,7 @@ export fn start() void {
         if (wire.a1) nodes.slice()[0].pinned = true;
         if (wire.a2) nodes.slice()[nodes.len - 1].pinned = true;
         const w = Wire{ .nodes = nodes };
-        wires.append(w) catch unreachable;
+        wires.append(w) catch showErr("Appending wire");
     }
 
     for (assets.sources) |source| {
@@ -271,7 +266,7 @@ export fn start() void {
                 .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
                 .anim = Anim{ .anim = &anim_store.coin },
                 .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
-            }) catch unreachable;
+            }) catch showErr("Appending coin");
         }
     }
 
@@ -441,9 +436,9 @@ fn load() bool {
     const read = w4.diskr(&load_buf, 1024);
     w4.tracef("%d bytes read", read);
 
-    for (load_buf[0 .. read - 1]) |byte| w4.tracef("%d", byte);
-    // if (true) return false;
+    if (true) return false;
     if (read <= 0) return false;
+    // for (load_buf[0 .. read - 1]) |byte| w4.tracef("%d", byte);
 
     var stream = std.io.fixedBufferStream(load_buf[0..read]);
     var reader = stream.reader();
@@ -456,7 +451,7 @@ fn load() bool {
     score = reader.readByte() catch return false;
 
     const obj_len = reader.readByte() catch return false;
-    const map_len = reader.readByte() catch return false;
+    // const map_len = reader.readByte() catch return false;
     const conduit_len = reader.readByte() catch return false;
 
     var i: usize = 0;
@@ -510,9 +505,9 @@ fn load() bool {
     // Load map
     var buf: [256]u8 = undefined;
     // const len = reader.readByte() catch return;
-    const bytes_map = reader.read(buf[0 .. map_len * 3]) catch return false;
-    w4.tracef("loading %d map diffs... %d bytes", map_len, bytes_map);
-    load_diff(&solids_mutable, assets.solid_size[0], buf[0..bytes_map]);
+    // const bytes_map = reader.read(buf[0 .. map_len * 3]) catch return false;
+    // w4.tracef("loading %d map diffs... %d bytes", map_len, bytes_map);
+    // load_diff(&solids_mutable, assets.solid_size[0], buf[0..bytes_map]);
 
     // Load conduit
     // const conduit_len = reader.readByte() catch return;
@@ -548,7 +543,7 @@ fn save() void {
     // Write temporary length values
     const lengths_start = save_stream.getPos() catch return w4.tracef("Couldn't get pos");
     save_writer.writeByte(0) catch return w4.tracef("Couldn't write obj length");
-    save_writer.writeByte(0) catch return w4.tracef("Couldn't write map length");
+    // save_writer.writeByte(0) catch return w4.tracef("Couldn't write map length");
     save_writer.writeByte(0) catch return w4.tracef("Couldn't write conduit length");
 
     // Write player
@@ -592,7 +587,7 @@ fn save() void {
     }
 
     // Write map
-    const map_len = write_diff(save_writer, assets.solid_size[0], &assets.solid, &solids_mutable) catch return w4.tracef("Couldn't save map diff");
+    // const map_len =  write_diff(save_writer, assets.solid_size[0], &assets.solid, &solids_mutable) catch return w4.tracef("Couldn't save map diff");
 
     // Write conduit
     const conduit_len = write_diff(save_writer, assets.conduit_size[0], &assets.conduit, &conduit_mutable) catch return w4.tracef("Couldn't save map diff");
@@ -600,13 +595,13 @@ fn save() void {
     const endPos = save_stream.getPos() catch return;
     save_stream.seekTo(lengths_start) catch w4.tracef("Couldn't seek");
     save_writer.writeByte(obj_len) catch return w4.tracef("Couldn't write obj length");
-    save_writer.writeByte(map_len) catch return w4.tracef("Couldn't write map length");
+    // save_writer.writeByte(map_len) catch return w4.tracef("Couldn't write map length");
     save_writer.writeByte(conduit_len) catch return w4.tracef("Couldn't write conduit length");
 
     save_stream.seekTo(endPos) catch return;
     const save_slice = save_stream.getWritten();
     const written = w4.diskw(save_slice.ptr, save_slice.len);
-    w4.tracef("%d bytes written, %d map diffs", written, map_len);
+    w4.tracef("%d bytes written", written);
     for (save_buf[0..written]) |byte| w4.tracef("%d", byte);
 }
 
