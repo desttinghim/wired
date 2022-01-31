@@ -107,6 +107,12 @@
                          "x":16,
                          "y":0
                         }],
+                 "properties":[
+                        {
+                         "name":"divisions",
+                         "type":"int",
+                         "value":5
+                        }],
                  "rotation":0,
                  "type":"wire",
                  "visible":true,

@@ -60,7 +60,7 @@ const Kinematic = struct {
     }
 };
 const Wire = struct {
-    nodes: std.BoundedArray(Pos, 32),
+    nodes: std.BoundedArray(Pos, 32) = std.BoundedArray(Pos, 32).init(0),
     enabled: bool = false,
 
     pub fn begin(this: *@This()) *Pos {
@@ -69,6 +69,16 @@ const Wire = struct {
 
     pub fn end(this: *@This()) *Pos {
         return &this.nodes.slice()[this.nodes.len - 1];
+    }
+
+    pub fn straighten(this: *@This()) void {
+        const b = this.begin().pos;
+        const e = this.end().pos;
+        const size = e - b;
+        for (this.nodes.slice()) |*node, i| {
+            if (i == 0 or i == this.nodes.len - 1) continue;
+            node.pos = b + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, this.nodes.len));
+        }
     }
 };
 const Physics = struct { gravity: Vec2f, friction: Vec2f };
@@ -234,21 +244,19 @@ export fn start() void {
     };
 
     for (assets.wire) |wire| {
-        const begin = vec2tovec2f(wire.p1);
-        const end = vec2tovec2f(wire.p2);
-        const size = end - begin;
-
-        var nodes = std.BoundedArray(Pos, 32).init(0) catch showErr("Nodes");
+        var w = wires.addOne() catch showErr("New wire");
+        const divisions = wire.divisions;
         var i: usize = 0;
-        const divisions = @floatToInt(usize, util.lengthf(size) / 6);
         while (i <= divisions) : (i += 1) {
-            const pos = begin + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, divisions));
-            nodes.append(Pos.init(pos)) catch showErr("Appending nodes");
+            w.nodes.append(Pos.init(Vec2f{ 0, 0 })) catch showErr("Appending nodes");
         }
-        if (wire.a1) nodes.slice()[0].pinned = true;
-        if (wire.a2) nodes.slice()[nodes.len - 1].pinned = true;
-        const w = Wire{ .nodes = nodes };
-        wires.append(w) catch showErr("Appending wire");
+        w.begin().pos = util.vec2ToVec2f(wire.p1);
+        w.end().pos = util.vec2ToVec2f(wire.p2);
+
+        w.begin().pinned = wire.a1;
+        w.end().pinned = wire.a2;
+
+        w.straighten();
     }
 
     for (assets.sources) |source| {
@@ -259,6 +267,7 @@ export fn start() void {
         circuit.addDoor(door);
     }
 
+    // _ = w4.diskw("", 0);
     if (!load()) {
         for (assets.coins) |coin| {
             coins.append(.{
@@ -480,21 +489,25 @@ fn load() bool {
                 var begin = wires.slice()[id].begin();
                 begin.* = pos;
                 begin.pinned = true;
+                wires.slice()[id].straighten();
             },
             .WireBeginLoose => {
                 var begin = wires.slice()[id].begin();
                 begin.* = pos;
                 begin.pinned = false;
+                wires.slice()[id].straighten();
             },
             .WireEndPinned => {
                 var end = wires.slice()[id].end();
                 end.* = pos;
                 end.pinned = true;
+                wires.slice()[id].straighten();
             },
             .WireEndLoose => {
                 var end = wires.slice()[id].end();
                 end.* = pos;
                 end.pinned = false;
+                wires.slice()[id].straighten();
             },
         }
     }

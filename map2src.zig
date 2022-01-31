@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const PropertyType = enum { @"bool" };
+const PropertyType = enum { @"bool", @"int" };
 const Property = struct {
     name: []const u8 = &.{},
     @"type": PropertyType = .@"bool",
-    value: union(PropertyType) { @"bool": bool },
+    value: union(PropertyType) { @"bool": bool, @"int": i64 },
 };
 
 const Point = struct {
@@ -110,7 +110,7 @@ pub fn do() !void {
         try outlist.appendSlice("const std = @import(\"std\");\n");
         try outlist.appendSlice("const Vec2 = std.meta.Vector(2,i32);\n");
         try outlist.appendSlice("const AABB = struct {pos: Vec2, size: Vec2};\n");
-        try outlist.appendSlice("const Wire = struct { p1: Vec2, p2: Vec2, a1: bool, a2: bool };\n");
+        try outlist.appendSlice("const Wire = struct { p1: Vec2, p2: Vec2, a1: bool, a2: bool, divisions: u8 };\n");
 
         var outbuffer: [16 * KB]u8 = undefined;
         for (map.layers) |layer| {
@@ -163,26 +163,42 @@ pub fn do() !void {
     }
 }
 
+pub fn length(vec: std.meta.Vector(2, i64)) i64 {
+    var squared = vec * vec;
+    return @intCast(i64, std.math.sqrt(@intCast(u64, @reduce(.Add, squared))));
+}
+
 pub fn appendWires(outlist: *std.ArrayList(u8), wirelist: std.ArrayList(Object)) !void {
     var outbuffer: [4 * KB]u8 = undefined;
     var outcontent = try std.fmt.bufPrint(&outbuffer, "pub const wire: [{}]Wire = [_]Wire{{", .{wirelist.items.len});
     try outlist.appendSlice(outcontent);
 
     for (wirelist.items) |obj| {
-        try outlist.appendSlice(".{");
         var a1 = true;
         var a2 = true;
+        var p1: std.meta.Vector(2, i64) = .{ 0, 0 };
+        var p2: std.meta.Vector(2, i64) = .{ 0, 0 };
+        var divisions: ?i64 = null;
         for (obj.properties) |p| {
             if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.@"bool";
             if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.@"bool";
+            if (std.mem.eql(u8, p.name, "divisions")) divisions = p.value.@"int";
         }
-        var of = try std.fmt.bufPrint(&outbuffer, ".a1 = {}, .a2 = {},", .{ a1, a2 });
-        try outlist.appendSlice(of);
         for (obj.polyline) |point, i| {
-            var pointf = try std.fmt.bufPrint(&outbuffer, ".p{} = Vec2{{ {}, {} }},", .{ i + 1, @floatToInt(i32, obj.x + point.x), @floatToInt(i32, obj.y + point.y) });
-            try outlist.appendSlice(pointf);
+            switch (i) {
+                0 => p1 = .{ @floatToInt(i64, obj.x + point.x), @floatToInt(i64, obj.y + point.y) },
+                1 => p2 = .{ @floatToInt(i64, obj.x + point.x), @floatToInt(i64, obj.y + point.y) },
+                else => return error.TooManyPoints,
+            }
         }
-        try outlist.appendSlice("}, ");
+        divisions = divisions orelse std.math.max(2, @divTrunc(length(p2 - p1), 6));
+
+        var of = try std.fmt.bufPrint(
+            &outbuffer,
+            ".{{ .a1 = {}, .a2 = {}, .divisions = {}, .p1 = Vec2{{ {}, {} }}, .p2 = Vec2{{ {}, {} }} }}, ",
+            .{ a1, a2, divisions, p1[0], p1[1], p2[0], p2[1] },
+        );
+        try outlist.appendSlice(of);
     }
     try outlist.appendSlice("};\n");
 }

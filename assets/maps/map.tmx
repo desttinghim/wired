@@ -148,6 +148,9 @@
    <polyline points="32,-64 -2,-46"/>
   </object>
   <object id="5" type="wire" x="20" y="436">
+   <properties>
+    <property name="divisions" type="int" value="5"/>
+   </properties>
    <polyline points="0,0 16,0"/>
   </object>
   <object id="6" type="door" x="84" y="468">
