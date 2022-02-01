@@ -15,7 +15,9 @@ pub fn start() void {
 }
 
 pub fn update() State {
-    w4.DRAW_COLORS.* = 0x0002;
+    w4.DRAW_COLORS.* = 0x0004;
+    w4.rect(Vec2{ 0, 0 }, Vec2{ 160, 160 });
+    w4.DRAW_COLORS.* = 0x0001;
     var i: i32 = 1;
     w4.text("WIRED", Vec2{ 16, i * 16 });
     i += 1;
