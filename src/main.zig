@@ -329,7 +329,11 @@ export fn update() void {
         if (shouldSave) save();
     }
 
-    camera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    const newCamera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    if (!@reduce(.And, newCamera == camera)) {
+        save();
+    }
+    camera = newCamera;
 
     map.draw(camera);
     circuit.draw(camera);
