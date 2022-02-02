@@ -399,6 +399,21 @@ fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
     return null;
 }
 
+fn getNearestPlugInteraction(pos: Vec2f, wireID: usize, which: usize) ?Interaction {
+    const cell = util.world2cell(pos);
+    if (circuit.get_cell(cell)) |tile| {
+        if (Circuit.is_plug(tile)) {
+            const active = circuit.isEnabled(cell);
+            return Interaction{
+                .details = .{ .plug = .{ .wireID = wireID, .which = which } },
+                .pos = cell * Map.tile_size + Vec2{ 4, 4 },
+                .active = active,
+            };
+        }
+    }
+    return null;
+}
+
 fn getNearestWireInteraction(pos: Vec2f, range: f32) ?Interaction {
     var newIndicator: ?Interaction = null;
     var minDistance: f32 = range;
@@ -451,7 +466,6 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
             indicator = i;
         }
     } else if (control.grabbing) |details| {
-        const cell = util.world2cell(offsetPos);
         var wire = &wires.slice()[details.id];
         var nodes = wire.nodes.slice();
 
@@ -465,13 +479,10 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
             nodes[details.which].pos = pos.pos + Vec2f{ 0, -4 };
         }
 
-        if (Circuit.is_plug(circuit.get_cell(cell) orelse 0)) {
-            const active = circuit.isEnabled(cell);
-            indicator = .{
-                .details = .{ .plug = .{ .wireID = details.id, .which = details.which } },
-                .pos = cell * Map.tile_size + Vec2{ 4, 4 },
-                .active = active,
-            };
+        if (getNearestPlugInteraction(offsetPos, details.id, details.which)) |i| {
+            indicator = i;
+        } else if (getNearestPlugInteraction(centeredPos, details.id, details.which)) |i| {
+            indicator = i;
         } else if (input.btnp(.one, .two)) {
             nodes[details.which].pinned = false;
             control.grabbing = null;
