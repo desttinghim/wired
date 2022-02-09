@@ -59,10 +59,10 @@ pub fn load_diff(this: *@This(), diff: []const u8) void {
     }
 }
 
-pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
+pub fn set_cell(this: *@This(), cell: Cell, tile: u8) !void {
     const x = cell[0];
     const y = cell[1];
-    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) unreachable;
+    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return error.OutOfBounds;
     const i = x + y * this.map_size[0];
     this.tiles[@intCast(usize, i)] = tile;
 }
@@ -109,23 +109,23 @@ fn getTile(this: @This(), x: i32, y: i32) ?u8 {
     return this.tiles[@intCast(u32, i)];
 }
 
-pub fn collide(this: @This(), rect: util.AABB) std.BoundedArray(util.AABB, 9) {
+pub fn collide(this: @This(), rect: util.AABB) !std.BoundedArray(util.AABB, 9) {
     const top_left = rect.pos / tile_sizef;
     const bot_right = (rect.pos + rect.size) / tile_sizef;
-    var collisions = std.BoundedArray(util.AABB, 9).init(0) catch unreachable;
+    var collisions = try std.BoundedArray(util.AABB, 9).init(0);
 
     var i: isize = @floatToInt(i32, top_left[0]);
     while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
         var a: isize = @floatToInt(i32, top_left[1]);
         while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
             if (this.isSolid(Cell{ i, a })) {
-                collisions.append(util.AABB{
+                try collisions.append(util.AABB{
                     .pos = Vec2f{
                         @intToFloat(f32, i * tile_width),
                         @intToFloat(f32, a * tile_height),
                     },
                     .size = tile_sizef,
-                }) catch unreachable;
+                });
             }
         }
     }

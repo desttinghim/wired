@@ -27,13 +27,21 @@ export fn start() void {
 export fn update() void {
     const newState = switch (state) {
         .Menu => menu.update(),
-        .Game => game.update(time),
+        .Game => game.update(time) catch |e| switch (e) {
+            error.Overflow => showErr(@errorName(e)),
+            error.OutOfBounds => showErr(@errorName(e)),
+            error.IndexOutOfBounds => showErr(@errorName(e)),
+        },
     };
     if (state != newState) {
         state = newState;
         switch (newState) {
             .Menu => menu.start(),
-            .Game => game.start(),
+            .Game => game.start() catch |e| switch (e) {
+                error.Overflow => showErr(@errorName(e)),
+                error.OutOfBounds => showErr(@errorName(e)),
+                error.IndexOutOfBounds => showErr(@errorName(e)),
+            },
         }
     }
     input.update();

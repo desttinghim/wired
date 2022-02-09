@@ -71,24 +71,24 @@ const Particle = struct {
 const ParticleSystem = struct {
     const MAXPARTICLES = 32;
     particles: std.BoundedArray(Particle, MAXPARTICLES),
-    pub fn init() @This() {
+    pub fn init() !@This() {
         return @This(){
-            .particles = std.BoundedArray(Particle, MAXPARTICLES).init(0) catch unreachable,
+            .particles = try std.BoundedArray(Particle, MAXPARTICLES).init(0),
         };
     }
 
-    pub fn update(this: *@This()) void {
+    pub fn update(this: *@This()) !void {
         var physics = .{ .gravity = Vec2f{ 0, 0.1 }, .friction = Vec2f{ 0.1, 0.1 } };
-        var remove = std.BoundedArray(usize, MAXPARTICLES).init(0) catch unreachable;
+        var remove = try std.BoundedArray(usize, MAXPARTICLES).init(0);
         for (this.particles.slice()) |*part, i| {
             if (!inView(part.pos.pos)) {
-                remove.append(i) catch unreachable;
+                try remove.append(i);
                 continue;
             }
             velocityProcess(1, &part.pos);
             physicsProcess(1, &part.pos, &physics);
             part.life -= 1;
-            if (part.life == 0) remove.append(i) catch unreachable;
+            if (part.life == 0) try remove.append(i);
         }
         while (remove.popOrNull()) |i| {
             _ = this.particles.swapRemove(i);
@@ -108,7 +108,9 @@ const ParticleSystem = struct {
         const posComp = Pos.initVel(pos, vel);
         const life = randRange(10, 50);
         const part = Particle.init(posComp, life);
-        this.particles.append(part) catch unreachable;
+        // Do nothing on error, we don't care if a particle
+        // is dropped
+        this.particles.append(part) catch {};
     }
 
     pub fn createNRandom(this: *@This(), pos: Vec2f, n: usize) void {
@@ -182,11 +184,11 @@ fn showErr(msg: []const u8) noreturn {
     unreachable;
 }
 
-pub fn start() void {
-    particles = ParticleSystem.init();
+pub fn start() !void {
+    particles = try ParticleSystem.init();
 
     std.mem.set(u8, &conduitLevels_mutable, 0);
-    circuit = Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
+    circuit = try Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
     map = Map.init(&solids_mutable, assets.solid_size);
 
     camera = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
@@ -223,15 +225,15 @@ pub fn start() void {
     }
 
     for (assets.sources) |source| {
-        circuit.addSource(source);
+        try circuit.addSource(source);
     }
 
     for (assets.doors) |door| {
-        circuit.addDoor(door);
+        try circuit.addDoor(door);
     }
 
     // _ = w4.diskw("", 0);
-    if (!Disk.load()) {
+    if (!try Disk.load()) {
         for (assets.coins) |coin| {
             coins.append(.{
                 .pos = Pos.init(util.vec2ToVec2f(coin * tile_size)),
@@ -242,14 +244,14 @@ pub fn start() void {
         }
     }
 
-    updateCircuit();
+    try updateCircuit();
 }
 
 var indicator: ?Interaction = null;
 
-pub fn update(time: usize) State {
+pub fn update(time: usize) !State {
     for (wires.slice()) |*wire| {
-        wirePhysicsProcess(1, wire);
+        try wirePhysicsProcess(1, wire);
         if (wire.enabled) {
             if (music.isDrumBeat()) {
                 if (!wire.begin().pinned) particles.createNRandom(wire.begin().pos, 8);
@@ -260,11 +262,11 @@ pub fn update(time: usize) State {
 
     velocityProcess(1, &player.pos);
     physicsProcess(1, &player.pos, &player.physics);
-    manipulationProcess(&player.pos, &player.control);
+    try manipulationProcess(&player.pos, &player.control);
     controlProcess(1, &player.pos, &player.control, &player.physics, &player.kinematic);
-    kinematicProcess(1, &player.pos, &player.kinematic);
+    try kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
-    particles.update();
+    try particles.update();
 
     // Drawing
     w4.DRAW_COLORS.* = 0x0004;
@@ -273,13 +275,13 @@ pub fn update(time: usize) State {
 
     {
         var shouldSave = false;
-        var remove = std.BoundedArray(usize, 10).init(0) catch unreachable;
+        var remove = try std.BoundedArray(usize, 10).init(0);
         for (coins.slice()) |*coin, i| {
             staticAnimProcess(1, &coin.sprite, &coin.anim);
             drawProcess(1, &coin.pos, &coin.sprite);
             if (coin.area.addv(coin.pos.pos).overlaps(player.kinematic.col.addv(player.pos.pos))) {
                 score += 1;
-                remove.append(i) catch unreachable;
+                try remove.append(i);
                 music.playCollect(score);
                 shouldSave = true;
             }
@@ -370,7 +372,7 @@ pub fn update(time: usize) State {
     }
 
     // Music
-    const musicCommand = music.getNext(1);
+    const musicCommand = try music.getNext(1);
     for (musicCommand.constSlice()) |sfx| {
         w4.tone(sfx.freq, sfx.duration, sfx.volume, sfx.flags);
     }
@@ -442,7 +444,7 @@ fn getNearestWireInteraction(pos: Vec2f, range: f32) ?Interaction {
     return newIndicator;
 }
 
-fn manipulationProcess(pos: *Pos, control: *Control) void {
+fn manipulationProcess(pos: *Pos, control: *Control) !void {
     var offset = switch (control.facing) {
         .left => Vec2f{ -6, 0 },
         .right => Vec2f{ 6, 0 },
@@ -495,25 +497,25 @@ fn manipulationProcess(pos: *Pos, control: *Control) void {
                     control.grabbing = .{ .id = wire.id, .which = wire.which };
                     wires.slice()[wire.id].nodes.slice()[wire.which].pos = pos.pos + Vec2f{ 0, -4 };
                     wires.slice()[wire.id].nodes.slice()[wire.which].pinned = false;
-                    updateCircuit();
+                    try updateCircuit();
                 },
                 .plug => |plug| {
                     wires.slice()[plug.wireID].nodes.slice()[plug.which].pos = vec2tovec2f(indicator.?.pos);
                     wires.slice()[plug.wireID].nodes.slice()[plug.which].pinned = true;
                     control.grabbing = null;
-                    updateCircuit();
+                    try updateCircuit();
                 },
                 .lever => {
                     const cell = @divTrunc(i.pos, Map.tile_size);
                     circuit.toggle(cell);
-                    updateCircuit();
+                    try updateCircuit();
                 },
             }
         }
     }
 }
 
-fn updateCircuit() void {
+fn updateCircuit() !void {
     circuit.clear();
     for (wires.slice()) |*wire, wireID| {
         wire.enabled = false;
@@ -522,9 +524,9 @@ fn updateCircuit() void {
         const cellBegin = util.world2cell(nodes[0].pos);
         const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
 
-        circuit.bridge(.{ cellBegin, cellEnd }, wireID);
+        try circuit.bridge(.{ cellBegin, cellEnd }, wireID);
     }
-    _ = circuit.fill();
+    _ = try circuit.fill();
     for (wires.slice()) |*wire| {
         const begin = wire.begin();
         const end = wire.end();
@@ -534,13 +536,13 @@ fn updateCircuit() void {
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
     map.reset(&assets.solid);
-    const enabledDoors = circuit.enabledDoors();
+    const enabledDoors = try circuit.enabledDoors();
     for (enabledDoors.constSlice()) |door| {
-        map.set_cell(door, 0);
+        try map.set_cell(door, 0);
     }
 }
 
-fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
+fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {
     var nodes = wire.nodes.slice();
     if (nodes.len == 0) return;
     if (!inView(wire.begin().pos) and !inView(wire.end().pos)) return;
@@ -550,7 +552,7 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
     for (nodes) |*node| {
         velocityProcess(dt, node);
         physicsProcess(dt, node, &physics);
-        kinematicProcess(dt, node, &kinematic);
+        try kinematicProcess(dt, node, &kinematic);
     }
 
     var iterations: usize = 0;
@@ -559,8 +561,8 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) void {
         while (left < nodes.len) : (left += 1) {
             // Left side
             constrainNodes(&nodes[left - 1], &nodes[left]);
-            kinematicProcess(dt, &nodes[left - 1], &kinematic);
-            kinematicProcess(dt, &nodes[left], &kinematic);
+            try kinematicProcess(dt, &nodes[left - 1], &kinematic);
+            try kinematicProcess(dt, &nodes[left], &kinematic);
         }
     }
 }
@@ -678,10 +680,10 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
     pos.pos += move;
 }
 
-fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
+fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     var next = pos.last;
     next[0] = pos.pos[0];
-    var hcol = map.collide(kinematic.col.addv(next));
+    var hcol = try map.collide(kinematic.col.addv(next));
     if (hcol.len > 0) {
         kinematic.lastCol[0] = next[0] - pos.last[0];
         next[0] = pos.last[0];
@@ -690,7 +692,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
     }
 
     next[1] = pos.pos[1];
-    var vcol = map.collide(kinematic.col.addv(next));
+    var vcol = try map.collide(kinematic.col.addv(next));
     if (vcol.len > 0) {
         kinematic.lastCol[1] = next[1] - pos.last[1];
         next[1] = pos.last[1];
@@ -699,7 +701,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) void {
     }
 
     var colPosAbs = next + kinematic.lastCol;
-    var lastCol = map.collide(kinematic.col.addv(colPosAbs));
+    var lastCol = try map.collide(kinematic.col.addv(colPosAbs));
     if (lastCol.len == 0) {
         kinematic.lastCol = Vec2f{ 0, 0 };
     }

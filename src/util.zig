@@ -67,13 +67,13 @@ pub const AABB = struct {
 pub fn Queue(comptime T: type, len: usize) type {
     return struct {
         data: std.BoundedArray(T, len),
-        pub fn init() @This() {
+        pub fn init() !@This() {
             return @This(){
-                .data = std.BoundedArray(T, len).init(0) catch unreachable,
+                .data = try std.BoundedArray(T, len).init(0),
             };
         }
-        pub fn insert(this: *@This(), t: T) void {
-            this.data.insert(0, t) catch unreachable;
+        pub fn insert(this: *@This(), t: T) !void {
+            try this.data.insert(0, t);
         }
         pub fn remove(this: *@This()) ?Cell {
             return this.data.popOrNull();

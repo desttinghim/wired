@@ -58,7 +58,7 @@ pub fn reset() void {
     // so a player can see how well they've done with the game in the past.
 }
 
-pub fn load() bool {
+pub fn load() !bool {
     var load_buf: [1024]u8 = undefined;
     const read = w4.diskr(&load_buf, 1024);
     w4.tracef("%d bytes read", read);
@@ -96,12 +96,12 @@ pub fn load() bool {
                 // player.pos.pos += Vec2f{ 4, 6 };
             },
             .Coin => {
-                game.coins.append(.{
+                try game.coins.append(.{
                     .pos = pos,
                     .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
                     .anim = Anim{ .anim = &game.anim_store.coin },
                     .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
-                }) catch unreachable;
+                });
             },
             .WireBeginPinned => {
                 var begin = game.wires.slice()[id].begin();

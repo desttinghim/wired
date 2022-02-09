@@ -202,15 +202,15 @@ bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
 sources: std.BoundedArray(Cell, MAXSOURCES),
 doors: std.BoundedArray(DoorState, MAXDOORS),
 
-pub fn init(map: []u8, levels: []u8, map_size: Vec2) @This() {
+pub fn init(map: []u8, levels: []u8, map_size: Vec2) !@This() {
     std.debug.assert(map.len == levels.len);
     var this = @This(){
         .map = map,
         .levels = levels,
         .map_size = map_size,
-        .bridges = std.BoundedArray(BridgeState, MAXBRIDGES).init(0) catch unreachable,
-        .sources = std.BoundedArray(Cell, MAXSOURCES).init(0) catch unreachable,
-        .doors = std.BoundedArray(DoorState, MAXDOORS).init(0) catch unreachable,
+        .bridges = try std.BoundedArray(BridgeState, MAXBRIDGES).init(0),
+        .sources = try std.BoundedArray(Cell, MAXSOURCES).init(0),
+        .doors = try std.BoundedArray(DoorState, MAXDOORS).init(0),
     };
     return this;
 }
@@ -225,38 +225,38 @@ pub fn enable(this: *@This(), cell: Cell) void {
     this.levels[i] += 1;
 }
 
-pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
+pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) !void {
     if (this.indexOf(cells[0])) |_| {
         if (this.indexOf(cells[1])) |_| {
-            this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false }) catch unreachable;
+            try this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false });
         }
     }
 }
 
-pub fn addSource(this: *@This(), cell: Cell) void {
+pub fn addSource(this: *@This(), cell: Cell) !void {
     if (this.indexOf(cell)) |_| {
-        this.sources.append(cell) catch unreachable;
+        try this.sources.append(cell);
     }
 }
 
-pub fn addDoor(this: *@This(), cell: Cell) void {
+pub fn addDoor(this: *@This(), cell: Cell) !void {
     if (this.indexOf(cell)) |_| {
-        this.doors.append(.{ .cell = cell, .enabled = false }) catch unreachable;
+        try this.doors.append(.{ .cell = cell, .enabled = false });
     }
 }
 
-pub fn enabledBridges(this: @This()) std.BoundedArray(usize, MAXBRIDGES) {
-    var items = std.BoundedArray(usize, MAXBRIDGES).init(0) catch unreachable;
+pub fn enabledBridges(this: @This()) !std.BoundedArray(usize, MAXBRIDGES) {
+    var items = try std.BoundedArray(usize, MAXBRIDGES).init(0);
     for (this.bridges.constSlice()) |b| {
-        if (b.enabled) items.append(b.id) catch unreachable;
+        if (b.enabled) try items.append(b.id);
     }
     return items;
 }
 
-pub fn enabledDoors(this: @This()) std.BoundedArray(Cell, MAXDOORS) {
-    var items = std.BoundedArray(Cell, MAXDOORS).init(0) catch unreachable;
+pub fn enabledDoors(this: @This()) !std.BoundedArray(Cell, MAXDOORS) {
+    var items = try std.BoundedArray(Cell, MAXDOORS).init(0);
     for (this.doors.constSlice()) |d| {
-        if (d.enabled) items.append(d.cell) catch unreachable;
+        if (d.enabled) try items.append(d.cell);
     }
     return items;
 }
@@ -281,23 +281,25 @@ pub fn clear(this: *@This()) void {
     for (this.doors.slice()) |*door| {
         door.enabled = false;
     }
+    // Resizing to zero should always work
     this.bridges.resize(0) catch unreachable;
 }
 
 pub fn reset(this: *@This()) void {
     this.clear();
+    // Resizing to zero should always work
     this.sources.resize(0) catch unreachable;
 }
 
 const w4 = @import("wasm4.zig");
 const Queue = util.Queue(Cell, MAXCELLS);
 // Returns number of cells filled
-pub fn fill(this: *@This()) usize {
+pub fn fill(this: *@This()) !usize {
     var count: usize = 0;
-    var visited = std.BoundedArray(usize, MAXCELLS).init(0) catch unreachable;
-    var q = Queue.init();
+    var visited = try std.BoundedArray(usize, MAXCELLS).init(0);
+    var q = try Queue.init();
     for (this.sources.slice()) |source| {
-        q.insert(source);
+        try q.insert(source);
     }
     while (q.remove()) |cell| {
         const tile = this.get_cell(cell) orelse {
@@ -312,13 +314,13 @@ pub fn fill(this: *@This()) usize {
         this.enable(cell);
         const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
         if (hasVisited and !is_logic(tile)) continue;
-        visited.append(index) catch unreachable;
+        try visited.append(index);
         count += 1;
         if (get_logic(tile)) |logic| {
             // TODO: implement other logic (though I'm pretty sure that requires a graph...)
             if (logic != .And) continue;
             if (this.levels[index] < 2) continue;
-            q.insert(cell + util.Dir.up);
+            try q.insert(cell + util.Dir.up);
         }
         for (get_outputs(tile)) |conductor, i| {
             if (!conductor) continue;
@@ -339,15 +341,15 @@ pub fn fill(this: *@This()) usize {
                 break :here 0;
             };
             if (get_inputs(nextTile)[@enumToInt(s.opposite())])
-                q.insert(nextCell);
+                try q.insert(nextCell);
         }
         if (is_plug(tile)) {
             for (this.bridges.slice()) |*b| {
                 if (@reduce(.And, b.cells[0] == cell)) {
-                    q.insert(b.cells[1]);
+                    try q.insert(b.cells[1]);
                     b.enabled = true;
                 } else if (@reduce(.And, b.cells[1] == cell)) {
-                    q.insert(b.cells[0]);
+                    try q.insert(b.cells[0]);
                     b.enabled = true;
                 }
             }
