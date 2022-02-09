@@ -208,8 +208,10 @@ pub fn start() !void {
         .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
     };
 
+    _ = try wires.resize(0);
     for (assets.wire) |wire| {
         var w = wires.addOne() catch showErr("New wire");
+        _ = try w.nodes.resize(0);
         const divisions = wire.divisions;
         var i: usize = 0;
         while (i <= divisions) : (i += 1) {
@@ -232,7 +234,7 @@ pub fn start() !void {
         try circuit.addDoor(door);
     }
 
-    // _ = w4.diskw("", 0);
+    try coins.resize(0);
     if (!try Disk.load()) {
         for (assets.coins) |coin| {
             coins.append(.{
@@ -307,6 +309,17 @@ pub fn update(time: usize) !State {
     }
 
     particles.draw();
+
+    {
+        const pos = player.pos.pos;
+        if (getNearestWireInteraction(pos, 8)) |i| {
+            const wire = wires.get(i.details.wire.id);
+            const node = wire.nodes.get(i.details.wire.which);
+            if (i.active and !node.pinned) {
+                try start();
+            }
+        }
+    }
 
     {
         const pos = util.world2cell(player.pos.pos);
