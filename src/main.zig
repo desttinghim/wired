@@ -30,7 +30,7 @@ export fn update() void {
         .Game => game.update(time) catch |e| switch (e) {
             error.Overflow => showErr(@errorName(e)),
             error.OutOfBounds => showErr(@errorName(e)),
-            error.IndexOutOfBounds => showErr(@errorName(e)),
+            // error.IndexOutOfBounds => showErr(@errorName(e)),
         },
     };
     if (state != newState) {
@@ -40,7 +40,7 @@ export fn update() void {
             .Game => game.start() catch |e| switch (e) {
                 error.Overflow => showErr(@errorName(e)),
                 error.OutOfBounds => showErr(@errorName(e)),
-                error.IndexOutOfBounds => showErr(@errorName(e)),
+                // error.IndexOutOfBounds => showErr(@errorName(e)),
             },
         }
     }
