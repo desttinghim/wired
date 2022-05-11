@@ -8,7 +8,12 @@ const scene = @import("scene.zig");
 
 const Game = @import("game.zig");
 const Menu = @import("menu.zig");
-const SceneManager = scene.Manager(Context, &.{Menu, Game});
+const Settings = @import("settings.zig");
+const SceneManager = scene.Manager(Context, &.{
+    Menu,
+    //Game,
+    Settings,
+});
 
 pub const Context = struct {
     scenes: SceneManager,
@@ -31,10 +36,10 @@ var ffba = std.heap.FixedBufferAllocator.init(&frameheap);
 var heap: [4096]u8 = undefined;
 var stack_allocator = StackAllocator.init(&heap);
 
-var ctx : Context = undefined;
+var ctx: Context = undefined;
 
 export fn start() void {
-    ctx = Context {
+    ctx = Context{
         .scenes = SceneManager.init(&ctx, &stack_allocator, fba.allocator()),
         .alloc = ffba.allocator(),
         .time = 0,

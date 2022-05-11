@@ -5,9 +5,7 @@ const Context = @import("main.zig").Context;
 const Vec2 = w4.Vec2;
 
 const MenuOptions = enum(usize) {
-    Continue,
-    NewGame,
-    Settings,
+    Back,
 };
 
 selected: i32 = 0,
@@ -31,30 +29,18 @@ pub fn update(this: *@This()) !void {
     var i: i32 = 1;
     w4.text("WIRED", Vec2{ 16, i * 16 });
     i += 1;
-    w4.text("Continue", Vec2{ 16, i * 16 });
-    i += 1;
-    w4.text("New Game", Vec2{ 16, i * 16 });
-    i += 1;
-    w4.text("Settings", Vec2{ 16, i * 16 });
+    w4.text("Back", Vec2{ 16, i * 16 });
     i += 1;
     w4.text(">", Vec2{ 8, 32 + this.selected * 16 });
 
     if (input.btnp(.one, .down)) this.selected += 1;
     if (input.btnp(.one, .up)) this.selected -= 1;
 
-    this.selected = if (this.selected < 0) 1 else @mod(this.selected, 3);
+    this.selected = if (this.selected < 0) 1 else @mod(this.selected, 1);
 
     if (input.btnp(.one, .one) or input.btnp(.one, .two)) {
         switch (@intToEnum(MenuOptions, this.selected)) {
-            // .Continue => _ = try this.ctx.scenes.replace(.game),
-            .Continue => {},
-            .NewGame => {
-                _ = w4.diskw("", 0);
-                // _ = try this.ctx.scenes.replace(.game);
-            },
-            .Settings => {
-                _ = try this.ctx.scenes.push(.settings);
-            },
+            .Back => _ = this.ctx.scenes.pop(),
         }
     }
 }
