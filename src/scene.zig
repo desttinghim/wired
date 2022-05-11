@@ -1,6 +1,8 @@
 const std = @import("std");
 const StackAllocator = @import("mem.zig").StackAllocator;
 
+const w4 = @import("wasm4.zig");
+
 pub fn Manager(comptime Context: type, comptime Scenes: []const type) type {
     comptime var scene_enum: std.builtin.Type.Enum = std.builtin.Type.Enum{
         .layout = .Auto,
@@ -19,9 +21,9 @@ pub fn Manager(comptime Context: type, comptime Scenes: []const type) type {
         scenes: std.ArrayList(ScenePtr),
 
         pub const Scene = SceneEnum;
-        pub const ScenePtr = struct {which: usize, ptr: *anyopaque};
+        const ScenePtr = struct {which: usize, ptr: *anyopaque};
 
-        fn init(ctx: *Context, scene_allocator: *StackAllocator, alloc: std.mem.Allocator) @This() {
+        pub fn init(ctx: *Context, scene_allocator: *StackAllocator, alloc: std.mem.Allocator) @This() {
             return @This() {
                 .sa = scene_allocator,
                 .ctx = ctx,
@@ -29,14 +31,14 @@ pub fn Manager(comptime Context: type, comptime Scenes: []const type) type {
             };
         }
 
-        fn deinit(this: *@This()) void {
+        pub fn deinit(this: *@This()) void {
             this.scenes.deinit();
         }
 
-        pub fn push(this: *@This(), comptime which: SceneEnum) !*Scenes[@enumToInt(which)] {
+        pub fn push(this: *@This(), comptime which: SceneEnum) anyerror!*Scenes[@enumToInt(which)] {
             const i = @enumToInt(which);
             const scene = try this.sa.allocator().create(Scenes[i]);
-            scene.* = @field(Scenes[i], "init")(this.ctx);
+            scene.* = try @field(Scenes[i], "init")(this.ctx);
             try this.scenes.append(.{.which = i, .ptr = scene});
             return scene;
         }
@@ -53,22 +55,24 @@ pub fn Manager(comptime Context: type, comptime Scenes: []const type) type {
             }
         }
 
-        pub fn tick(this: *@This()) void {
-            if (this.scenes.items.len == 0) return;
+        pub fn replace(this: *@This(), comptime which: SceneEnum) anyerror!void  {
+            this.pop();
+            _ = try this.push(which);
+        }
+
+        pub fn tick(this: *@This()) anyerror!void {
+            // if (this.scenes.items.len == 0) return;
             const scene = this.scenes.items[this.scenes.items.len - 1];
             inline for (Scenes) |S, i| {
                 if (i == scene.which) {
                     const ptr = @ptrCast(*S, @alignCast(@alignOf(S), scene.ptr));
-                    @field(S,"update")(ptr);
+                    try @field(S,"update")(ptr);
+                    break;
                 }
-                break;
+            } else {
+                return error.NoSuchScene;
             }
         }
-
-        const NullScene = struct {
-            fn init(_:*Context) @This() { return @This(){}; }
-            fn update(_:*@This()) anyerror!void {}
-        };
     };
 }
 

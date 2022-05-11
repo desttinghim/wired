@@ -1,6 +1,6 @@
 const input = @import("input.zig");
 const w4 = @import("wasm4.zig");
-const State = @import("main.zig").State;
+const Context = @import("main.zig").Context;
 
 const Vec2 = w4.Vec2;
 
@@ -10,14 +10,20 @@ const MenuOptions = enum(usize) {
 };
 
 selected: i32 = 0,
+ctx: *Context,
 
-pub fn init() @This() {
+pub fn init(ctx: *Context) !@This() {
     return @This(){
         .selected = 0,
+        .ctx = ctx,
     };
 }
 
-pub fn update(this: *@This()) State {
+pub fn deinit(_: *@This()) void {
+    w4.trace("goodbye", .{});
+}
+
+pub fn update(this: *@This()) !void {
     w4.DRAW_COLORS.* = 0x0004;
     w4.rect(Vec2{ 0, 0 }, Vec2{ 160, 160 });
     w4.DRAW_COLORS.* = 0x0001;
@@ -37,13 +43,11 @@ pub fn update(this: *@This()) State {
 
     if (input.btnp(.one, .one) or input.btnp(.one, .two)) {
         switch (@intToEnum(MenuOptions, this.selected)) {
-            .Continue => return .Game,
+            .Continue => _ = try this.ctx.scenes.replace(.game),
             .NewGame => {
                 _ = w4.diskw("", 0);
-                return .Game;
+                _ = try this.ctx.scenes.replace(.game);
             },
         }
     }
-
-    return .Menu;
 }

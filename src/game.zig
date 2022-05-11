@@ -3,10 +3,10 @@ const w4 = @import("wasm4.zig");
 const assets = @import("assets");
 const input = @import("input.zig");
 const util = @import("util.zig");
+const Context = @import("main.zig").Context;
 const Circuit = @import("circuit.zig");
 const Map = @import("map.zig");
 const Music = @import("music.zig");
-const State = @import("main.zig").State;
 const Disk = @import("disk.zig");
 
 const Vec2 = util.Vec2;
@@ -184,7 +184,12 @@ fn showErr(msg: []const u8) noreturn {
     unreachable;
 }
 
-pub fn start() !void {
+const Self = @This();
+
+ctx: *Context,
+
+pub fn init(ctx: *Context) !Self {
+    var self = Self{.ctx = ctx};
     particles = try ParticleSystem.init();
 
     std.mem.set(u8, &conduitLevels_mutable, 0);
@@ -245,11 +250,16 @@ pub fn start() !void {
     }
 
     try updateCircuit();
+    return self;
+}
+
+pub fn deinit(_: *Self) void {
 }
 
 var indicator: ?Interaction = null;
 
-pub fn update(time: usize) !State {
+pub fn update(self: *Self) !void {
+    const time = self.ctx.time;
     for (wires.slice()) |*wire| {
         try wirePhysicsProcess(1, wire);
         if (wire.enabled) {
@@ -378,7 +388,6 @@ pub fn update(time: usize) !State {
     }
 
     indicator = null;
-    return .Game;
 }
 
 const Interaction = struct {

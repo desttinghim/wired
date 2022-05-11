@@ -4,60 +4,49 @@ const assets = @import("assets");
 const input = @import("input.zig");
 const util = @import("util.zig");
 const StackAllocator = @import("mem.zig").StackAllocator;
+const scene = @import("scene.zig");
 
-const game = @import("game.zig");
+const Game = @import("game.zig");
 const Menu = @import("menu.zig");
+const SceneManager = scene.Manager(Context, &.{Menu, Game});
 
-pub const State = enum {
-    Menu,
-    Game,
+pub const Context = struct {
+    scenes: SceneManager,
+    alloc: std.mem.Allocator,
+    time: usize,
 };
 
 fn showErr(msg: []const u8) noreturn {
     w4.traceNoF(msg);
+    w4.traceNoF("ERROR. Aborting...");
     unreachable;
 }
 
+var sceneptr_heap: [64]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&sceneptr_heap);
+
+var frameheap: [4096]u8 = undefined;
+var ffba = std.heap.FixedBufferAllocator.init(&frameheap);
+
 var heap: [4096]u8 = undefined;
 var stack_allocator = StackAllocator.init(&heap);
-var allocator: std.mem.Allocator = undefined;
-var time: usize = 0;
-var state: State = .Menu;
 
-var menu: *Menu = undefined;
+var ctx : Context = undefined;
 
 export fn start() void {
-    allocator = stack_allocator.allocator();
-    menu = allocator.create(Menu) catch {
-        w4.trace("couldn't allocate", .{});
-        @panic("couldn't allocate");
+    ctx = Context {
+        .scenes = SceneManager.init(&ctx, &stack_allocator, fba.allocator()),
+        .alloc = ffba.allocator(),
+        .time = 0,
     };
-    menu.* = Menu.init();
+    // inline for (@typeInfo(SceneManager.Scene).Enum.fields) |field| {
+    //     @compileLog(field.name);
+    // }
+    _ = ctx.scenes.push(.menu) catch |e| showErr(@errorName(e));
 }
 
 export fn update() void {
-    const newState = switch (state) {
-        .Menu => menu.update(),
-        .Game => game.update(time) catch |e| switch (e) {
-            error.Overflow => showErr(@errorName(e)),
-            error.OutOfBounds => showErr(@errorName(e)),
-            // error.IndexOutOfBounds => showErr(@errorName(e)),
-        },
-    };
-    if (state != newState) {
-        state = newState;
-        switch (newState) {
-            .Menu => {
-                menu = allocator.create(Menu) catch @panic("couldn't allocate");
-                menu.* = Menu.init();
-            },
-            .Game => game.start() catch |e| switch (e) {
-                error.Overflow => showErr(@errorName(e)),
-                error.OutOfBounds => showErr(@errorName(e)),
-                // error.IndexOutOfBounds => showErr(@errorName(e)),
-            },
-        }
-    }
+    ctx.scenes.tick() catch |e| showErr(@errorName(e));
     input.update();
-    time += 1;
+    ctx.time += 1;
 }
