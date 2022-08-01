@@ -313,11 +313,13 @@ pub fn update(time: usize) !State {
     {
         const pos = player.pos.pos;
         if (getNearestWireInteraction(pos, 8)) |i| {
-            const wire = wires.get(i.details.wire.id);
-            const node = wire.nodes.get(i.details.wire.which);
-            if (i.active and !node.pinned) {
-                try start();
-            }
+            _ = i;
+            // Uncomment for death
+            // const wire = wires.get(i.details.wire.id);
+            // const node = wire.nodes.get(i.details.wire.which);
+            // if (i.active and !node.pinned) {
+            //     try start();
+            // }
         }
     }
 
