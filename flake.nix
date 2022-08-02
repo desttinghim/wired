@@ -19,6 +19,7 @@
             zig.packages.${system}.master.latest
             pkgs.butler
             pkgs.binaryen
+            pkgs.tiled
           ];
         };
 
