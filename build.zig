@@ -1,4 +1,5 @@
 const std = @import("std");
+const LDtkImport = @import("tools/LDtkImport.zig");
 
 pub fn build(b: *std.build.Builder) !void {
     const assets = std.build.Pkg{
@@ -6,8 +7,14 @@ pub fn build(b: *std.build.Builder) !void {
         .source = .{ .path = "assets/assets.zig" },
     };
 
+    const ldtk = LDtkImport.create(b, .{
+        .source_path = .{ .path = "assets/maps/wired.ldtk" },
+        .output_name = "mapldtk",
+    });
+
     const mode = b.standardReleaseOptions();
     const lib = b.addSharedLibrary("cart", "src/main.zig", .unversioned);
+    lib.step.dependOn(&ldtk.step);
     lib.addPackage(assets);
     lib.setBuildMode(mode);
     lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
