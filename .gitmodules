@@ -1,0 +1,3 @@
+[submodule "deps/zig-ldtk"]
+	path = deps/zig-ldtk
+	url = https://github.com/desttinghim/zig-ldtk
