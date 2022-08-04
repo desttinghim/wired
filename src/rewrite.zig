@@ -62,6 +62,78 @@ pub fn start() !void {
             22, // South-East-West
             0, // South-East-West-North
         }},
+        .conduit = world.AutoTileset{ .lookup = .{
+            42, // Island
+            58, // North
+            59, // West
+            41, // West-North
+            57, // East
+            40, // East-North
+            26, // East-West
+            73, // East-West-North
+            56, // South
+            27, // South-North
+            25, // South-West
+            74, // South-West-North
+            24, // South-East
+            75, // South-East-North
+            72, // South-East-West
+            43, // South-East-West-North
+        } },
+        .plug = world.AutoTileset{ .lookup = .{
+            02, // Island
+            45, // North
+            46, // West
+            02, // West-North
+            47, // East
+            02, // East-North
+            02, // East-West
+            02, // East-West-North
+            44, // South
+            02, // South-North
+            02, // South-West
+            02, // South-West-North
+            02, // South-East
+            02, // South-East-North
+            02, // South-East-West
+            02, // South-East-West-North
+        } },
+        .switch_off = world.AutoTileset{ .lookup = .{
+            02, // Island
+            02, // North
+            02, // West
+            02, // West-North
+            02, // East
+            02, // East-North
+            02, // East-West
+            02, // East-West-North
+            02, // South
+            32, // South-North
+            02, // South-West
+            29, // South-West-North
+            02, // South-East
+            31, // South-East-North
+            02, // South-East-West
+            02, // South-East-West-North
+        } },
+        .switch_on = world.AutoTileset{ .lookup = .{
+            02, // Island
+            02, // North
+            02, // West
+            02, // West-North
+            02, // East
+            02, // East-North
+            02, // East-West
+            02, // East-West-North
+            02, // South
+            48, // South-North
+            02, // South-West
+            28, // South-West-North
+            02, // South-East
+            02, // South-East-North
+            30, // South-East-West
+            02, // South-East-West-North
+        } },
     });
 }
 

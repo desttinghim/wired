@@ -14,6 +14,10 @@ pub const Options = struct {
     alloc: std.mem.Allocator,
     level: world.Level,
     tileset: world.AutoTileset,
+    conduit: world.AutoTileset,
+    plug: world.AutoTileset,
+    switch_on: world.AutoTileset,
+    switch_off: world.AutoTileset,
 };
 
 fn is_solid(tile: u7) bool {
@@ -55,9 +59,10 @@ pub fn extractLevel(opt: Options) !void {
     var autotiles = try alloc.alloc(?AutoTile, size);
     defer alloc.free(autotiles);
 
+    // Auto generate walls
     {
         var i: usize = 0;
-        while (i < level.tiles.len) : (i += 1) {
+        while (i < size) : (i += 1) {
             const x = @mod(i, width);
             const y = @divTrunc(i, width);
             const stride = width;
@@ -111,10 +116,78 @@ pub fn extractLevel(opt: Options) !void {
             const li = autotile.to_u4();
             const tile = tileset.lookup[li];
             map.tiles[i] = tile;
-        } else {
+        }
+    }
+
+    // Auto generate circuit
+    // Re-use autotiles to save memory
+    {
+        var i: usize = 0;
+        while (i < size) : (i += 1) {
             const x = @mod(i, width);
             const y = @divTrunc(i, width);
-            w4.trace("{}, {}: {}", .{ x, y, map.tiles[i] });
+            const stride = width;
+
+            if (circuit_map[i] == .None) {
+                autotiles[i] = null;
+                continue;
+            }
+
+            const out_of_bounds = switch (circuit_map[i]) {
+                .Join, .Source => true,
+                else => false,
+            };
+            var north = false;
+            var south = false;
+            var west = false;
+            var east = false;
+
+            // Check horizontal neighbors
+            if (x == 0) {
+                west = out_of_bounds;
+                east = circuit_map[i + 1] != .None;
+            } else if (x == width - 1) {
+                west = circuit_map[i - 1] != .None;
+                east = out_of_bounds;
+            } else {
+                west = circuit_map[i - 1] != .None;
+                east = circuit_map[i + 1] != .None;
+            }
+
+            // Check vertical neighbours
+            if (y == 0) {
+                north = out_of_bounds;
+                south = circuit_map[i + stride] != .None;
+            } else if (y == height - 1) {
+                north = circuit_map[i - stride] != .None;
+                south = out_of_bounds;
+            } else {
+                north = circuit_map[i - stride] != .None;
+                south = circuit_map[i + stride] != .None;
+            }
+
+            autotiles[i] = AutoTile{
+                .North = north,
+                .South = south,
+                .West = west,
+                .East = east,
+            };
+        }
+    }
+
+    for (autotiles) |autotile_opt, i| {
+        if (autotile_opt) |autotile| {
+            const li = autotile.to_u4();
+            const tile = switch (circuit_map[i]) {
+                .Conduit, .Source, .Join => opt.conduit.lookup[li],
+                .Switch_On => opt.switch_on.lookup[li],
+                .Switch_Off => opt.switch_off.lookup[li],
+                .Plug => opt.plug.lookup[li],
+                .And => 60,
+                .Xor => 62,
+                else => 0,
+            };
+            circuit.map[i] = tile;
         }
     }
 }
