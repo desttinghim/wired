@@ -117,15 +117,12 @@ fn make(step: *std.build.Step) !void {
             for (circuit.intGridCsv) |cir64, i| {
                 const cir = @intCast(u4, cir64);
                 const col = collision.intGridCsv[i];
-                if (col != 2) {
+                if (col < 2) {
                     tiles[i] = world.TileData{ .flags = .{
                         .solid = col == 1,
                         .circuit = cir,
                     } };
                 }
-                // if (col == 2) {
-                //     tiles[i].is_tile = true;
-                // }
             }
 
             try level.write(writer);
