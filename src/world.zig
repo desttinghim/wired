@@ -2,7 +2,8 @@
 
 const std = @import("std");
 
-// Tile Storage Types
+/// The CircuitType of a tile modifies how the tile responds to
+/// electricity
 pub const CircuitType = enum(u4) {
     None = 0,
     Conduit = 1,
@@ -51,36 +52,48 @@ pub const Level = struct {
     world_y: u8,
     width: u16,
     size: u16,
+    entity_count: u16,
     tiles: ?[]TileData,
+    entities: ?[]Entity = null,
 
-    pub fn init(x: u8, y: u8, width: u16, buf: []TileData) Level {
+    pub fn init(x: u8, y: u8, width: u16, buf: []TileData, entities: []Entity) Level {
         return Level{
             .world_x = x,
             .world_y = y,
             .width = width,
             .size = buf.len,
+            .entity_count = entities.len,
             .tiles = buf,
+            .entities = entities,
         };
     }
 
     pub fn write(level: Level, writer: anytype) !void {
         var tiles = level.tiles orelse return error.NullTiles;
-        try writer.writeInt(u8, level.world_x, .Big);
-        try writer.writeInt(u8, level.world_y, .Big);
-        try writer.writeInt(u16, level.width, .Big);
-        try writer.writeInt(u16, level.size, .Big);
+        var entities = level.entities orelse return error.NullEntities;
+        try writer.writeInt(u8, level.world_x, .Little);
+        try writer.writeInt(u8, level.world_y, .Little);
+        try writer.writeInt(u16, level.width, .Little);
+        try writer.writeInt(u16, level.size, .Little);
+        try writer.writeInt(u16, level.entity_count, .Little);
+
         for (tiles) |tile| {
             try writer.writeByte(tile.toByte());
+        }
+
+        for (entities) |entity| {
+            try entity.write(writer);
         }
     }
 
     pub fn read(reader: anytype) !Level {
         return Level{
-            .world_x = try reader.readInt(u8, .Big),
-            .world_y = try reader.readInt(u8, .Big),
-            .width = try reader.readInt(u16, .Big),
-            .size = try reader.readInt(u16, .Big),
+            .world_x = try reader.readInt(u8, .Little),
+            .world_y = try reader.readInt(u8, .Little),
+            .width = try reader.readInt(u16, .Little),
+            .size = try reader.readInt(u16, .Little),
             .tiles = null,
+            .entities = null,
         };
     }
 
@@ -91,6 +104,25 @@ pub const Level = struct {
         while (i < level.size) : (i += 1) {
             buf[i] = TileData.fromByte(try reader.readByte());
         }
+    }
+
+    pub fn readEntities(level: *Level, reader: anytype, buf: []Entity) !void {
+        std.debug.assert(buf.len >= level.entity_count);
+        level.entities = buf;
+        var i: usize = 0;
+        while (i < level.entity_count) : (i += 1) {
+            buf[i] = Entity.read(reader);
+        }
+    }
+
+    pub fn getSpawn(level: *Level) ?[2]i16 {
+        std.debug.assert(level.entities != null);
+        for (level.entities) |entity| {
+            if (entity.kind == .Player) {
+                return [2]i16{ entity.x, entity.y };
+            }
+        }
+        return null;
     }
 };
 
@@ -190,5 +222,32 @@ pub const AutoTileset = struct {
                 else => return tileset.default,
             },
         }
+    }
+};
+
+pub const EntityKind = enum(u8) {
+    Player,
+    Coin,
+    WireNode,
+    WireEndNode,
+    Door,
+    Trapdoor,
+};
+
+pub const Entity = struct {
+    kind: EntityKind,
+    x: i16,
+    y: i16,
+
+    pub fn write(entity: Entity, writer: anytype) !void {
+        try writer.writeInt(u8, @enumToInt(entity.kind), .Little);
+        try writer.writeInt(i16, entity.x, .Little);
+        try writer.writeInt(i16, entity.y, .Little);
+    }
+
+    pub fn read(entity: Entity, reader: anytype) !void {
+        try reader.readInt(u8, @intToEnum(EntityKind, entity.kind), .Little);
+        try reader.readInt(i16, entity.x, .Little);
+        try reader.readInt(i16, entity.y, .Little);
     }
 };

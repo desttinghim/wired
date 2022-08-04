@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 const w4 = @import("wasm4.zig");
 
 // Adapted from https://gist.github.com/YuxiUx/c3a8787209e32fc29fb48e8454f0009c
@@ -89,9 +90,10 @@ pub const Procedural = struct {
         this.collect = .{ .score = score, .start = beatTotal + 1, .end = beatTotal + (this.beatsPerBar * length) + 1 };
     }
 
-    pub fn getNext(this: *@This(), dt: u32) MusicCommand {
-        var i = 0;
-        var cmd: [4]Sfx = undefined;
+    pub fn getNext(this: *@This(), dt: u32, alloc: std.mem.Allocator) !util.Buffer(Sfx) {
+        var sfx_buf = try alloc.alloc(Sfx, 4);
+        var cmd = util.Buffer(Sfx).init(sfx_buf);
+
         const beatProgress = this.tick % this.beat;
         const beatTotal = @divTrunc(this.tick, this.beat);
         const beat = beatTotal % this.beatsPerBar;
@@ -102,13 +104,12 @@ pub const Procedural = struct {
             const playNote = if (collect.score < 6) beat % 2 == 0 else beat % 4 != 3;
             if (beatTotal >= collect.start and beatTotal < collect.end and playNote and beatProgress == 0) {
                 // const notelen = @intCast(u8, this.beat * this.beatsPerBar);
-                cmd[i] = (Sfx{
+                cmd.append(Sfx{
                     .freq = .{ .start = this.nextNote(this.note) },
                     .duration = .{ .sustain = 5, .release = 5 },
                     .volume = 25,
                     .flags = .{ .channel = .pulse2, .mode = .p25 },
                 });
-                i += 1;
                 this.note += 1;
             }
             if (bar > collect.end) {
@@ -117,31 +118,28 @@ pub const Procedural = struct {
             }
         }
         if (this.intensity.atLeast(.calm) and beat == 0 and beatProgress == 0) {
-            cmd[i] = (.{
+            cmd.append (.{
                 .freq = .{ .start = 220, .end = 110 },
                 .duration = .{ .release = 3 },
                 .volume = 100,
                 .flags = .{ .channel = .triangle },
             });
-            i += 1;
         }
         if (this.intensity.atLeast(.active) and beat == this.beatsPerBar / 2 and beatProgress == 0) {
-            cmd[i] = (.{
+            cmd.append(.{
                 .freq = .{ .start = 110, .end = 55 },
                 .duration = .{ .release = 3 },
                 .volume = 100,
                 .flags = .{ .channel = .triangle },
             });
-            i += 1;
         }
         if (this.walking and beat % 3 == 1 and beatProgress == 7) {
-            cmd[i] = (.{
+            cmd.append(.{
                 .freq = .{ .start = 1761, .end = 1 },
                 .duration = .{ .release = 5 },
                 .volume = 25,
                 .flags = .{ .channel = .noise },
             });
-            i += 1;
         }
         return cmd;
     }

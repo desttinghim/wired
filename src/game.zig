@@ -1,6 +1,5 @@
 const std = @import("std");
 const w4 = @import("wasm4.zig");
-const assets = @import("assets");
 const input = @import("input.zig");
 const util = @import("util.zig");
 const Circuit = @import("circuit.zig");
@@ -8,6 +7,9 @@ const Map = @import("map.zig");
 const Music = @import("music.zig");
 const State = @import("main.zig").State;
 const Disk = @import("disk.zig");
+const extract = @import("extract.zig");
+const world = @import("world.zig");
+const world_data = @import("world_data");
 
 const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
@@ -136,6 +138,15 @@ fn randRangeF(min: f32, max: f32) f32 {
     return min + (random.float(f32) * (max - min));
 }
 
+// Allocators
+var fba_buf: [4096]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
+var alloc = fba.allocator();
+
+var frame_fba_buf: [4096]u8 = undefined;
+var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
+var frame_alloc = frame_fba.allocator();
+
 // Global vars
 var map: Map = undefined;
 var circuit: Circuit = undefined;
@@ -156,9 +167,12 @@ var ScoreCoin = Sprite{
     .flags = .{ .bpp = .b2 },
 };
 
-var solids_mutable = assets.solid;
-pub var conduit_mutable = assets.conduit;
-var conduitLevels_mutable: [conduit_mutable.len]u8 = undefined;
+var map_buf: [400]u8 = undefined;
+
+var circuit_lvl_buf: [400]u8 = undefined;
+var circuit_buf: [400]u8 = undefined;
+
+var circuit_options: Circuit.Options = undefined;
 
 pub const anim_store = struct {
     const stand = Anim.frame(8);
@@ -187,17 +201,66 @@ fn showErr(msg: []const u8) noreturn {
 pub fn start() !void {
     particles = try ParticleSystem.init();
 
-    std.mem.set(u8, &conduitLevels_mutable, 0);
-    circuit = try Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
-    map = Map.init(&solids_mutable, assets.solid_size);
+    var level_size = Vec2{ 20, 20 };
 
-    camera = @divTrunc(assets.spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    circuit_options = .{
+        .map = &circuit_buf,
+        .levels = &circuit_lvl_buf,
+        .map_size = level_size,
+        .bridges = try alloc.alloc(Circuit.BridgeState, 5),
+        .sources = try alloc.alloc(util.Cell, 5),
+        .doors = try alloc.alloc(Circuit.DoorState, 5),
+    };
+    circuit = Circuit.init(circuit_options);
+
+    map = Map.init(&map_buf, level_size);
+
+    var stream = std.io.FixedBufferStream([]const u8){
+        .pos = 0,
+        .buffer = world_data,
+    };
+    const world_reader = stream.reader();
+
+    var level = try world.Level.read(world_reader);
+    var level_buf = try alloc.alloc(world.TileData, level.size);
+    try level.readTiles(world_reader, level_buf);
+
+    try extract.extractLevel(.{
+        .alloc = frame_alloc,
+        .level = level,
+        .map = &map,
+        .circuit = &circuit,
+        .tileset = world.AutoTileset.initOffsetFull(113),
+        .conduit = world.AutoTileset.initOffsetFull(97),
+        .plug = world.AutoTileset.initOffsetCardinal(17),
+        .switch_off = world.AutoTileset.initSwitches(&.{
+            29, // South-North
+            25, // South-West-North
+            27, // South-East-North
+        }, 2),
+        .switch_on = world.AutoTileset.initSwitches(&.{
+            30, // South-North
+            26, // South-West-North
+            28, // South-East-West
+        }, 2),
+    });
+
+    var entity_buf = try alloc.alloc(world.Entity, level.entity_count);
+    try level.readEntities(world_reader, entity_buf);
+
+    const spawnArr = level.getSpawn().?;
+    const spawn = Vec2{ spawnArr[0], spawnArr[1] };
+    // std.mem.set(u8, &conduitLevels_mutable, 0);
+    // circuit = try Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
+    // map = Map.init(&solids_mutable, assets.solid_size);
+
+    camera = @divTrunc(spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
     const tile_size = Vec2{ 8, 8 };
     const offset = Vec2{ 4, 8 };
 
     player = .{
-        .pos = Pos.init(util.vec2ToVec2f(assets.spawn * tile_size + offset)),
+        .pos = Pos.init(util.vec2ToVec2f(spawn * tile_size + offset)),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 8, .flags = .{ .bpp = .b2 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
@@ -210,12 +273,12 @@ pub fn start() !void {
 
     _ = try wires.resize(0);
     for (assets.wire) |wire| {
-        var w = wires.addOne() catch showErr("New wire");
+        var w = try wires.addOne();
         _ = try w.nodes.resize(0);
         const divisions = wire.divisions;
         var i: usize = 0;
         while (i <= divisions) : (i += 1) {
-            w.nodes.append(Pos.init(Vec2f{ 0, 0 })) catch showErr("Appending nodes");
+            try w.nodes.append(Pos.init(Vec2f{ 0, 0 }));
         }
         w.begin().pos = util.vec2ToVec2f(wire.p1);
         w.end().pos = util.vec2ToVec2f(wire.p2);
@@ -237,12 +300,12 @@ pub fn start() !void {
     try coins.resize(0);
     if (!try Disk.load()) {
         for (assets.coins) |coin| {
-            coins.append(.{
+            try coins.append(.{
                 .pos = Pos.init(util.vec2ToVec2f(coin * tile_size)),
                 .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
                 .anim = Anim{ .anim = &anim_store.coin },
                 .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
-            }) catch showErr("Appending coin");
+            });
         }
     }
 
@@ -252,6 +315,9 @@ pub fn start() !void {
 var indicator: ?Interaction = null;
 
 pub fn update(time: usize) !State {
+    // Clear the frame buffer
+    frame_fba.reset();
+
     for (wires.slice()) |*wire| {
         try wirePhysicsProcess(1, wire);
         if (wire.enabled) {
@@ -387,8 +453,8 @@ pub fn update(time: usize) !State {
     }
 
     // Music
-    const musicCommand = try music.getNext(1);
-    for (musicCommand.constSlice()) |sfx| {
+    const musicCommand = try music.getNext(1, frame_alloc);
+    for (musicCommand.items) |sfx| {
         w4.tone(sfx.freq, sfx.duration, sfx.volume, sfx.flags);
     }
 
@@ -539,9 +605,9 @@ fn updateCircuit() !void {
         const cellBegin = util.world2cell(nodes[0].pos);
         const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
 
-        try circuit.bridge(.{ cellBegin, cellEnd }, wireID);
+        circuit.bridge(.{ cellBegin, cellEnd }, wireID);
     }
-    _ = try circuit.fill();
+    _ = try circuit.fill(frame_alloc);
     for (wires.slice()) |*wire| {
         const begin = wire.begin();
         const end = wire.end();
@@ -551,8 +617,8 @@ fn updateCircuit() !void {
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
     map.reset(&assets.solid);
-    const enabledDoors = try circuit.enabledDoors();
-    for (enabledDoors.constSlice()) |door| {
+    const enabledDoors = try circuit.enabledDoors(frame_alloc);
+    for (enabledDoors.items) |door| {
         try map.set_cell(door, 0);
     }
 }
@@ -698,7 +764,7 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
 fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     var next = pos.last;
     next[0] = pos.pos[0];
-    var hcol = try map.collide(kinematic.col.addv(next));
+    var hcol = map.collide(kinematic.col.addv(next));
     if (hcol.len > 0) {
         kinematic.lastCol[0] = next[0] - pos.last[0];
         next[0] = pos.last[0];
@@ -707,7 +773,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     }
 
     next[1] = pos.pos[1];
-    var vcol = try map.collide(kinematic.col.addv(next));
+    var vcol = map.collide(kinematic.col.addv(next));
     if (vcol.len > 0) {
         kinematic.lastCol[1] = next[1] - pos.last[1];
         next[1] = pos.last[1];
@@ -716,7 +782,7 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     }
 
     var colPosAbs = next + kinematic.lastCol;
-    var lastCol = try map.collide(kinematic.col.addv(colPosAbs));
+    var lastCol = map.collide(kinematic.col.addv(colPosAbs));
     if (lastCol.len == 0) {
         kinematic.lastCol = Vec2f{ 0, 0 };
     }

@@ -234,17 +234,17 @@ pub fn enable(this: *@This(), cell: Cell) void {
     this.levels[i] += 1;
 }
 
-pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) !void {
+pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
     if (this.indexOf(cells[0])) |_| {
         if (this.indexOf(cells[1])) |_| {
-            try this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false });
+            this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false });
         }
     }
 }
 
-pub fn addSource(this: *@This(), cell: Cell) !void {
+pub fn addSource(this: *@This(), cell: Cell) void {
     if (this.indexOf(cell)) |_| {
-        try this.sources.append(cell);
+        this.sources.append(cell);
     }
 }
 
@@ -265,7 +265,7 @@ pub fn enabledBridges(this: @This(), alloc: std.mem.Allocator) !util.Buffer(usiz
 
 pub fn enabledDoors(this: @This(), alloc: std.mem.Allocator) !util.Buffer(Cell) {
     var items = try alloc.alloc(Cell, this.doors.len);
-    var buffer = util.buffer(Cell).init(items);
+    var buffer = util.Buffer(Cell).init(items);
     for (this.doors.items) |d| {
         if (d.enabled) buffer.append(d.cell);
     }
@@ -289,11 +289,10 @@ pub fn toggle(this: *@This(), c: Cell) void {
 
 pub fn clear(this: *@This()) void {
     std.mem.set(u8, this.levels, 0);
-    for (this.doors.slice()) |*door| {
+    for (this.doors.items) |*door| {
         door.enabled = false;
     }
-    // Resizing to zero should always work
-    this.bridges.resize(0) catch unreachable;
+    this.bridges.reset();
 }
 
 pub fn reset(this: *@This()) void {
@@ -303,7 +302,7 @@ pub fn reset(this: *@This()) void {
 }
 
 const w4 = @import("wasm4.zig");
-const Queue = util.Queue(Cell, MAXCELLS);
+const Queue = util.Queue(Cell);
 // Returns number of cells filled
 pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
     var count: usize = 0;
@@ -313,13 +312,15 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
 
     var visited = util.Buffer(usize).init(items);
 
-    var q = try Queue.init();
-    for (this.sources.slice()) |source| {
+    var q_buf = try alloc.alloc(Cell, MAXCELLS);
+    var q = Queue.init(q_buf);
+
+    for (this.sources.items) |source| {
         try q.insert(source);
     }
     while (q.remove()) |cell| {
         const tile = this.get_cell(cell) orelse {
-            for (this.doors.slice()) |*d| {
+            for (this.doors.items) |*d| {
                 if (@reduce(.And, d.cell == cell)) {
                     d.enabled = true;
                 }
@@ -328,9 +329,9 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
         };
         const index = this.indexOf(cell) orelse continue;
         this.enable(cell);
-        const hasVisited = std.mem.containsAtLeast(usize, visited.slice(), 1, &.{index});
+        const hasVisited = std.mem.containsAtLeast(usize, visited.items, 1, &.{index});
         if (hasVisited and !is_logic(tile)) continue;
-        try visited.append(index);
+        visited.append(index);
         count += 1;
         if (get_logic(tile)) |logic| {
             // TODO: implement other logic (though I'm pretty sure that requires a graph...)
@@ -349,7 +350,7 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
                 nextCell[1] >= this.map_size[1])
                 continue;
             const nextTile = this.get_cell(nextCell) orelse here: {
-                for (this.doors.slice()) |*d| {
+                for (this.doors.items) |*d| {
                     if (@reduce(.And, d.cell == nextCell)) {
                         d.enabled = true;
                     }
@@ -360,7 +361,7 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
                 try q.insert(nextCell);
         }
         if (is_plug(tile)) {
-            for (this.bridges.slice()) |*b| {
+            for (this.bridges.items) |*b| {
                 if (@reduce(.And, b.cells[0] == cell)) {
                     try q.insert(b.cells[1]);
                     b.enabled = true;

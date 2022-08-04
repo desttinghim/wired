@@ -117,11 +117,11 @@ pub fn Buffer(comptime T: type) type {
             };
         }
 
-        pub fn reset(buf: @This()) void {
+        pub fn reset(buf: *@This()) void {
             buf.len = 0;
         }
 
-        pub fn append(buf: @This(), item: T) void {
+        pub fn append(buf: *@This(), item: T) void {
             std.debug.assert(buf.len < buf.items.len);
             buf.items[buf.len] = item;
             buf.len += 1;

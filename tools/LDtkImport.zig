@@ -51,8 +51,10 @@ fn make(step: *std.build.Step) !void {
     defer data.deinit();
     const writer = data.writer();
 
-    const ldtk = try LDtk.parse(allocator, source);
-    defer ldtk.deinit(allocator);
+    var ldtk_parser = try LDtk.parse(allocator, source);
+    defer ldtk_parser.deinit();
+
+    const ldtk = ldtk_parser.root;
 
     if (ldtk.levels.len > 0) {
         const level0 = ldtk.levels[0];
@@ -60,23 +62,85 @@ fn make(step: *std.build.Step) !void {
             const world_x: u8 = @intCast(u8, @divExact(level0.worldX, (ldtk.worldGridWidth orelse 160)));
             const world_y: u8 = @intCast(u8, @divExact(level0.worldY, (ldtk.worldGridHeight orelse 160)));
 
+            var entity_array = std.ArrayList(world.Entity).init(allocator);
+            defer entity_array.deinit();
+
             var circuit_layer: ?LDtk.LayerInstance = null;
             var collision_layer: ?LDtk.LayerInstance = null;
             for (layers) |layer| {
                 if (std.mem.eql(u8, layer.__identifier, "Entities")) {
+                    // Entities
                     std.debug.assert(layer.__type == .Entities);
+
                     for (layer.entityInstances) |entity| {
-                        std.log.warn("{s}", .{entity.__identifier});
+                        var kind_opt: ?world.EntityKind = null;
+                        if (std.mem.eql(u8, entity.__identifier, "Player")) {
+                            kind_opt = .Player;
+                        } else if (std.mem.eql(u8, entity.__identifier, "Wire")) {
+                            kind_opt = .WireNode;
+                        } else if (std.mem.eql(u8, entity.__identifier, "Coin")) {
+                            kind_opt = .Coin;
+                        } else if (std.mem.eql(u8, entity.__identifier, "Door")) {
+                            kind_opt = .Door;
+                        } else if (std.mem.eql(u8, entity.__identifier, "Trapdoor")) {
+                            kind_opt = .Trapdoor;
+                        }
+
+                        if (kind_opt) |kind| {
+                            if (kind != .WireNode) {
+                                const world_entity = world.Entity{
+                                    .kind = kind,
+                                    .x = @intCast(i16, entity.__grid[0]),
+                                    .y = @intCast(i16, entity.__grid[1]),
+                                };
+                                try entity_array.append(world_entity);
+                            } else {
+                                const wire_begin = world.Entity{
+                                    .kind = .WireNode,
+                                    .x = @intCast(i16, entity.__grid[0]),
+                                    .y = @intCast(i16, entity.__grid[1]),
+                                };
+                                try entity_array.append(wire_begin);
+
+                                for (entity.fieldInstances) |field| {
+                                    if (std.mem.eql(u8, field.__identifier, "Point")) {
+                                        const end = field.__value.Array.items.len - 1;
+                                        const endpoint = field.__value.Array.items[end];
+                                        // const jstr = switch (endpoint) {
+                                        //     .Array => "Array",
+                                        //     .Object => "Object",
+                                        //     .Integer => "Integer",
+                                        //     else => "Other",
+                                        // };
+                                        // std.log.warn("{s}", .{jstr});
+                                        // std.log.warn("{}", .{endpoint.Integer});
+                                        // endpoint.dump();
+                                        const x = endpoint.Object.get("cx").?;
+                                        const y = endpoint.Object.get("cy").?;
+                                        const wire_end = world.Entity{
+                                            .kind = .WireEndNode,
+                                            .x = @intCast(i16, x.Integer),
+                                            .y = @intCast(i16, y.Integer),
+                                        };
+                                        try entity_array.append(wire_end);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else if (std.mem.eql(u8, layer.__identifier, "Circuit")) {
+                    // Circuit
                     std.debug.assert(layer.__type == .IntGrid);
 
                     circuit_layer = layer;
                 } else if (std.mem.eql(u8, layer.__identifier, "Collision")) {
+                    // Collision
                     std.debug.assert(layer.__type == .IntGrid);
 
                     collision_layer = layer;
                 } else {
+                    // Unknown
                     std.log.warn("{s}: {}", .{ layer.__identifier, layer.__type });
                 }
             }
@@ -100,13 +164,16 @@ fn make(step: *std.build.Step) !void {
                 .world_y = world_y,
                 .width = @intCast(u16, width),
                 .size = @intCast(u16, size),
+                .entity_count = @intCast(u16, entity_array.items.len),
                 .tiles = null,
+                .entities = entity_array.items,
             };
             level.tiles = try allocator.alloc(world.TileData, size);
             defer allocator.free(level.tiles.?);
 
             const tiles = level.tiles.?;
 
+            // Add straight tile data
             for (collision.autoLayerTiles) |autotile| {
                 const x = @divExact(autotile.px[0], collision.__gridSize);
                 const y = @divExact(autotile.px[1], collision.__gridSize);
@@ -114,6 +181,7 @@ fn make(step: *std.build.Step) !void {
                 tiles[i] = world.TileData{ .tile = @intCast(u7, autotile.t + 1) };
             }
 
+            // Add circuit tiles
             for (circuit.intGridCsv) |cir64, i| {
                 const cir = @intCast(u4, cir64);
                 const col = collision.intGridCsv[i];
@@ -125,6 +193,7 @@ fn make(step: *std.build.Step) !void {
                 }
             }
 
+            // Save the level!
             try level.write(writer);
         }
     }

@@ -118,7 +118,7 @@ pub const CollisionInfo = struct {
         };
     }
 
-    pub fn append(col: CollisionInfo, item: util.AABB) void {
+    pub fn append(col: *CollisionInfo, item: util.AABB) void {
         std.debug.assert(col.len < 9);
         col.items[col.len] = item;
         col.len += 1;
