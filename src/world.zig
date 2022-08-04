@@ -16,75 +16,32 @@ pub const CircuitType = enum(u4) {
     Source = 9,
 };
 
-pub const TileData = union {
+pub const TileData = union(enum) {
     tile: u7,
     flags: struct {
         solid: bool,
         circuit: u4,
     },
-};
 
-pub const TileStore = struct {
-    is_tile: bool,
-    data: TileData,
-
-    pub fn toByte(store: TileStore) u8 {
-        if (store.is_tile) {
-            return 1 | (store.data.tile << 1);
-        } else {
-            return (@intCast(u7, @boolToInt(store.data.flags.solid)) << 1) | (@intCast(u7, store.data.flags.circuit) << 2);
+    pub fn toByte(data: TileData) u8 {
+        switch (data) {
+            .tile => |int| return 1 | (int << 1),
+            .flags => |flags| return (@intCast(u7, @boolToInt(flags.solid)) << 1) | (@intCast(u7, flags.circuit) << 2),
         }
     }
 
-    pub fn fromByte(byte: u8) TileStore {
+    pub fn fromByte(byte: u8) TileData {
         const is_tile = (1 & byte) > 0;
         if (is_tile) {
             const tile = @intCast(u7, (~@as(u7, 1) & byte) >> 1);
-            return TileStore{
-                .is_tile = true,
-                .data = .{ .tile = tile },
-            };
+            return TileData{ .tile = tile };
         } else {
             const is_solid = (0b0000_0010 & byte) > 0;
             const circuit = @intCast(u4, (0b0011_1100 & byte) >> 2);
-            return TileStore{
-                .is_tile = false,
-                .data = .{ .flags = .{
-                    .solid = is_solid,
-                    .circuit = circuit,
-                } },
-            };
-        }
-    }
-};
-
-pub const LevelHeader = struct {
-    world_x: u8,
-    world_y: u8,
-    width: u16,
-    size: u16,
-
-    pub fn write(header: LevelHeader, writer: anytype) !void {
-        try writer.writeInt(u8, header.world_x, .Big);
-        try writer.writeInt(u8, header.world_y, .Big);
-        try writer.writeInt(u16, header.width, .Big);
-        try writer.writeInt(u16, header.size, .Big);
-    }
-
-    pub fn read(reader: anytype) !LevelHeader {
-        return LevelHeader{
-            .world_x = try reader.readInt(u8, .Big),
-            .world_y = try reader.readInt(u8, .Big),
-            .width = try reader.readInt(u16, .Big),
-            .size = try reader.readInt(u16, .Big),
-        };
-    }
-
-    pub fn readTiles(header: LevelHeader, reader: anytype, buf: []TileStore) !void {
-        std.debug.assert(buf.len > header.size);
-        var i: usize = 0;
-        while (i < header.size) : (i += 1) {
-            buf[i] = TileStore.fromByte(try reader.readByte());
+            return TileData{ .flags = .{
+                .solid = is_solid,
+                .circuit = circuit,
+            } };
         }
     }
 };
@@ -93,15 +50,47 @@ pub const Level = struct {
     world_x: u8,
     world_y: u8,
     width: u16,
-    tiles: []TileStore,
+    size: u16,
+    tiles: ?[]TileData,
 
-    pub fn init(header: LevelHeader, buf: []TileStore) Level {
+    pub fn init(x: u8, y: u8, width: u16, buf: []TileData) Level {
         return Level{
-            .world_x = header.world_x,
-            .world_y = header.world_y,
-            .width = header.width,
-            .tiles = buf[0..header.size],
+            .world_x = x,
+            .world_y = y,
+            .width = width,
+            .size = buf.len,
+            .tiles = buf,
         };
+    }
+
+    pub fn write(level: Level, writer: anytype) !void {
+        var tiles = level.tiles orelse return error.NullTiles;
+        try writer.writeInt(u8, level.world_x, .Big);
+        try writer.writeInt(u8, level.world_y, .Big);
+        try writer.writeInt(u16, level.width, .Big);
+        try writer.writeInt(u16, level.size, .Big);
+        for (tiles) |tile| {
+            try writer.writeByte(tile.toByte());
+        }
+    }
+
+    pub fn read(reader: anytype) !Level {
+        return Level{
+            .world_x = try reader.readInt(u8, .Big),
+            .world_y = try reader.readInt(u8, .Big),
+            .width = try reader.readInt(u16, .Big),
+            .size = try reader.readInt(u16, .Big),
+            .tiles = null,
+        };
+    }
+
+    pub fn readTiles(level: *Level, reader: anytype, buf: []TileData) !void {
+        std.debug.assert(buf.len >= level.size);
+        level.tiles = buf;
+        var i: usize = 0;
+        while (i < level.size) : (i += 1) {
+            buf[i] = TileData.fromByte(try reader.readByte());
+        }
     }
 };
 

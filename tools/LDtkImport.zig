@@ -51,7 +51,6 @@ fn make(step: *std.build.Step) !void {
     defer data.deinit();
     const writer = data.writer();
 
-    // TODO: Convert LDtk data into wired format
     const ldtk = try LDtk.parse(allocator, source);
     defer ldtk.deinit(allocator);
 
@@ -96,43 +95,40 @@ fn make(step: *std.build.Step) !void {
             const width = @intCast(u16, circuit.__cWid);
             const size = @intCast(u16, width * circuit.__cHei);
 
-            try (world.LevelHeader{
+            var level = world.Level{
                 .world_x = world_x,
                 .world_y = world_y,
                 .width = @intCast(u16, width),
                 .size = @intCast(u16, size),
-            }).write(writer);
+                .tiles = null,
+            };
+            level.tiles = try allocator.alloc(world.TileData, size);
+            defer allocator.free(level.tiles.?);
 
-            var tiles = try allocator.alloc(world.TileStore, size);
-            defer allocator.free(tiles);
+            const tiles = level.tiles.?;
 
             for (collision.autoLayerTiles) |autotile| {
                 const x = @divExact(autotile.px[0], collision.__gridSize);
                 const y = @divExact(autotile.px[1], collision.__gridSize);
                 const i = @intCast(usize, x + y * width);
-                tiles[i] = world.TileStore{
-                    .is_tile = true,
-                    .data = .{ .tile = @intCast(u7, autotile.t + 1) },
-                };
+                tiles[i] = world.TileData{ .tile = @intCast(u7, autotile.t + 1) };
             }
 
             for (circuit.intGridCsv) |cir64, i| {
                 const cir = @intCast(u4, cir64);
                 const col = collision.intGridCsv[i];
                 if (col != 2) {
-                    tiles[i] = world.TileStore{
-                        .is_tile = false,
-                        .data = .{ .flags = .{
-                            .solid = col == 1,
-                            .circuit = cir,
-                        } },
-                    };
+                    tiles[i] = world.TileData{ .flags = .{
+                        .solid = col == 1,
+                        .circuit = cir,
+                    } };
                 }
-                if (col == 2) {
-                    tiles[i].is_tile = true;
-                }
-                try writer.writeByte(tiles[i].toByte());
+                // if (col == 2) {
+                //     tiles[i].is_tile = true;
+                // }
             }
+
+            try level.write(writer);
         }
     }
 

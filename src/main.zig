@@ -42,6 +42,7 @@ export fn update() void {
                 // error.OutOfBounds => showErr(@errorName(e)),
                 error.EndOfStream => showErr(@errorName(e)),
                 error.OutOfMemory => showErr(@errorName(e)),
+                error.NullTiles => showErr(@errorName(e)),
             },
         }
     }

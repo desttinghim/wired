@@ -32,9 +32,11 @@ pub fn extractLevel(opt: Options) !void {
     const level = opt.level;
     const tileset = opt.tileset;
 
+    const tiles = level.tiles orelse return error.NullTiles;
+
     const width = level.width;
-    const height = @divExact(@intCast(u16, level.tiles.len), level.width);
-    const size = level.tiles.len;
+    const height = @divExact(@intCast(u16, tiles.len), level.width);
+    const size = tiles.len;
 
     map.map_size = .{ level.width, height };
     circuit.map_size = .{ level.width, height };
@@ -45,14 +47,17 @@ pub fn extractLevel(opt: Options) !void {
     var circuit_map = try alloc.alloc(CircuitType, size);
     defer alloc.free(circuit_map);
 
-    for (level.tiles) |tile, i| {
-        if (tile.is_tile) {
-            auto_map[i] = false;
-            map.tiles[i] = tile.data.tile;
-            circuit_map[i] = .None;
-        } else {
-            auto_map[i] = tile.data.flags.solid;
-            circuit_map[i] = @intToEnum(CircuitType, tile.data.flags.circuit);
+    for (tiles) |data, i| {
+        switch (data) {
+            .tile => |tile| {
+                auto_map[i] = false;
+                map.tiles[i] = tile;
+                circuit_map[i] = .None;
+            },
+            .flags => |flags| {
+                auto_map[i] = flags.solid;
+                circuit_map[i] = @intToEnum(CircuitType, flags.circuit);
+            },
         }
     }
 

@@ -11,7 +11,7 @@ const util = @import("util.zig");
 
 const Vec2 = w4.Vec2;
 
-var fba_buf: [1024]u8 = undefined;
+var fba_buf: [4096]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
 var alloc = fba.allocator();
 
@@ -49,11 +49,9 @@ pub fn start() !void {
     };
     const world_reader = stream.reader();
 
-    const header = try world.LevelHeader.read(world_reader);
-    var tile_buf: [4096]world.TileStore = undefined;
-    try header.readTiles(world_reader, &tile_buf);
-
-    const level = world.Level.init(header, &tile_buf);
+    var level = try world.Level.read(world_reader);
+    var level_buf = try alloc.alloc(world.TileData, level.size);
+    try level.readTiles(world_reader, level_buf);
 
     try extract.extractLevel(.{
         .alloc = frame_alloc,
