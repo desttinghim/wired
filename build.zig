@@ -12,9 +12,13 @@ pub fn build(b: *std.build.Builder) !void {
         .output_name = "mapldtk",
     });
 
+    const data_step = b.addOptions();
+    data_step.addOptionFileSource("path", .{.generated = &ldtk.world_data });
+
     const mode = b.standardReleaseOptions();
     const lib = b.addSharedLibrary("cart", "src/main.zig", .unversioned);
-    lib.step.dependOn(&ldtk.step);
+    lib.step.dependOn(&data_step.step);
+    lib.addPackage(data_step.getPackage("world_data"));
     lib.addPackage(assets);
     lib.setBuildMode(mode);
     lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });

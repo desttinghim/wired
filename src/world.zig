@@ -39,7 +39,7 @@ pub const TileStore = struct {
     pub fn fromByte(byte: u8) TileStore {
         const is_tile = (1 & byte) > 0;
         if (is_tile) {
-            const tile = @intCast(u7, (~1 & byte) >> 1);
+            const tile = @intCast(u7, (~@as(u7, 1) & byte) >> 1);
             return TileStore{
                 .is_tile = is_tile,
                 .data = .{ .tile = tile },
@@ -84,7 +84,7 @@ pub const LevelHeader = struct {
         std.debug.assert(buf.len > header.size);
         var i: usize = 0;
         while (i < header.size) : (i += 1) {
-            buf[i] = TileStore.fromByte(reader.readByte());
+            buf[i] = TileStore.fromByte(try reader.readByte());
         }
     }
 };
@@ -94,14 +94,23 @@ pub const Level = struct {
     world_y: u8,
     width: u16,
     tiles: []TileStore,
+
+    pub fn init(header: LevelHeader, buf: []TileStore) Level {
+        return Level {
+            .world_x = header.world_x,
+            .world_y = header.world_y,
+            .width = header.width,
+            .tiles = buf[0..header.size],
+        };
+    }
 };
 
 // AutoTile algorithm datatypes
 pub const AutoTile = packed struct {
     North: bool,
     West: bool,
-    South: bool,
     East: bool,
+    South: bool,
 
     pub fn to_u4(autotile: AutoTile) u4 {
         return @bitCast(u4, autotile);

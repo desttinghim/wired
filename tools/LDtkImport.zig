@@ -12,6 +12,7 @@ step: std.build.Step,
 builder: *std.build.Builder,
 source_path: std.build.FileSource,
 output_name: []const u8,
+world_data: std.build.GeneratedFile,
 
 pub fn create(b: *std.build.Builder, opt: struct {
     source_path: std.build.FileSource,
@@ -23,7 +24,9 @@ pub fn create(b: *std.build.Builder, opt: struct {
         .builder = b,
         .source_path = opt.source_path,
         .output_name = opt.output_name,
+        .world_data = undefined,
     };
+    result.*.world_data = std.build.GeneratedFile{ .step = &result.*.step };
     return result;
 }
 
@@ -136,4 +139,6 @@ fn make(step: *std.build.Step) !void {
         else => return e,
     };
     try cwd.writeFile(output, data.items);
+
+    this.world_data.path = output;
 }
