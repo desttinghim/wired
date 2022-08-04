@@ -7,8 +7,13 @@ const State = @import("main.zig").State;
 const std = @import("std");
 const w4 = @import("wasm4.zig");
 const world = @import("world.zig");
+const util = @import("util.zig");
 
 const Vec2 = w4.Vec2;
+
+var fba_buf: [1024]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
+var alloc = fba.allocator();
 
 var frame_fba_buf: [4096]u8 = undefined;
 var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
@@ -21,10 +26,21 @@ var circuit_lvl_buf: [400]u8 = undefined;
 var circuit_buf: [400]u8 = undefined;
 var circuit: Circuit = undefined;
 
+var circuit_options: Circuit.Options = undefined;
+
 var level_size = Vec2{ 20, 20 };
 
 pub fn start() !void {
-    circuit = try Circuit.init(&circuit_buf, &circuit_lvl_buf, level_size);
+    circuit_options = .{
+        .map = &circuit_buf,
+        .levels = &circuit_lvl_buf,
+        .map_size = level_size,
+        .bridges = try alloc.alloc(Circuit.BridgeState, 5),
+        .sources = try alloc.alloc(util.Cell, 5),
+        .doors = try alloc.alloc(Circuit.DoorState, 5),
+    };
+    circuit = Circuit.init(circuit_options);
+
     map = Map.init(&map_buf, level_size);
 
     var stream = std.io.FixedBufferStream([]const u8){

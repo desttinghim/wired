@@ -38,7 +38,7 @@ export fn update() void {
         switch (newState) {
             .Menu => menu.start(),
             .Game => game.start() catch |e| switch (e) {
-                error.Overflow => showErr(@errorName(e)),
+                // error.Overflow => showErr(@errorName(e)),
                 // error.OutOfBounds => showErr(@errorName(e)),
                 error.EndOfStream => showErr(@errorName(e)),
                 error.OutOfMemory => showErr(@errorName(e)),

@@ -190,27 +190,36 @@ const MAXLOGIC = 40;
 
 pub const CellData = struct { level: u8 = 0, tile: u8 };
 
-const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
-const DoorState = struct { cell: Cell, enabled: bool };
+pub const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
+pub const DoorState = struct { cell: Cell, enabled: bool };
 
 /// Tile id of the tiles
 map: []u8,
 /// Logic levels of the tiles
 levels: []u8,
 map_size: Vec2,
-bridges: std.BoundedArray(BridgeState, MAXBRIDGES),
-sources: std.BoundedArray(Cell, MAXSOURCES),
-doors: std.BoundedArray(DoorState, MAXDOORS),
+bridges: util.Buffer(BridgeState),
+sources: util.Buffer(Cell),
+doors: util.Buffer(DoorState),
 
-pub fn init(map: []u8, levels: []u8, map_size: Vec2) !@This() {
-    std.debug.assert(map.len == levels.len);
+pub const Options = struct {
+    map: []u8,
+    levels: []u8,
+    map_size: Vec2,
+    bridges: []BridgeState,
+    sources: []Cell,
+    doors: []DoorState,
+};
+
+pub fn init(opt: Options) @This() {
+    std.debug.assert(opt.map.len == opt.levels.len);
     var this = @This(){
-        .map = map,
-        .levels = levels,
-        .map_size = map_size,
-        .bridges = try std.BoundedArray(BridgeState, MAXBRIDGES).init(0),
-        .sources = try std.BoundedArray(Cell, MAXSOURCES).init(0),
-        .doors = try std.BoundedArray(DoorState, MAXDOORS).init(0),
+        .map = opt.map,
+        .levels = opt.levels,
+        .map_size = opt.map_size,
+        .bridges = util.Buffer(BridgeState).init(opt.bridges),
+        .sources = util.Buffer(Cell).init(opt.sources),
+        .doors = util.Buffer(DoorState).init(opt.doors),
     };
     return this;
 }
@@ -245,20 +254,22 @@ pub fn addDoor(this: *@This(), cell: Cell) !void {
     }
 }
 
-pub fn enabledBridges(this: @This()) !std.BoundedArray(usize, MAXBRIDGES) {
-    var items = try std.BoundedArray(usize, MAXBRIDGES).init(0);
-    for (this.bridges.constSlice()) |b| {
-        if (b.enabled) try items.append(b.id);
+pub fn enabledBridges(this: @This(), alloc: std.mem.Allocator) !util.Buffer(usize) {
+    var items = try alloc.alloc(usize, this.bridges.len);
+    var buffer = util.Buffer(usize).init(items);
+    for (this.bridges.items) |b| {
+        if (b.enabled) buffer.append(b.id);
     }
-    return items;
+    return buffer;
 }
 
-pub fn enabledDoors(this: @This()) !std.BoundedArray(Cell, MAXDOORS) {
-    var items = try std.BoundedArray(Cell, MAXDOORS).init(0);
-    for (this.doors.constSlice()) |d| {
-        if (d.enabled) try items.append(d.cell);
+pub fn enabledDoors(this: @This(), alloc: std.mem.Allocator) !util.Buffer(Cell) {
+    var items = try alloc.alloc(Cell, this.doors.len);
+    var buffer = util.buffer(Cell).init(items);
+    for (this.doors.items) |d| {
+        if (d.enabled) buffer.append(d.cell);
     }
-    return items;
+    return buffer;
 }
 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
@@ -294,9 +305,14 @@ pub fn reset(this: *@This()) void {
 const w4 = @import("wasm4.zig");
 const Queue = util.Queue(Cell, MAXCELLS);
 // Returns number of cells filled
-pub fn fill(this: *@This()) !usize {
+pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
     var count: usize = 0;
-    var visited = try std.BoundedArray(usize, MAXCELLS).init(0);
+
+    var items = try alloc.alloc(usize, MAXCELLS);
+    defer alloc.free(items);
+
+    var visited = util.Buffer(usize).init(items);
+
     var q = try Queue.init();
     for (this.sources.slice()) |source| {
         try q.insert(source);

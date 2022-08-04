@@ -107,17 +107,35 @@ fn getTile(this: @This(), x: i32, y: i32) ?u8 {
     return this.tiles[@intCast(u32, i)];
 }
 
-pub fn collide(this: @This(), rect: util.AABB) !std.BoundedArray(util.AABB, 9) {
+pub const CollisionInfo = struct {
+    len: usize,
+    items: [9]util.AABB,
+
+    pub fn init() CollisionInfo {
+        return CollisionInfo {
+            .len = 0,
+            .items = undefined,
+        };
+    }
+
+    pub fn append(col: CollisionInfo, item: util.AABB) void {
+        std.debug.assert(col.len < 9);
+        col.items[col.len] = item;
+        col.len += 1;
+    }
+};
+
+pub fn collide(this: @This(), rect: util.AABB) CollisionInfo {
     const top_left = rect.pos / tile_sizef;
     const bot_right = (rect.pos + rect.size) / tile_sizef;
-    var collisions = try std.BoundedArray(util.AABB, 9).init(0);
+    var collisions = CollisionInfo.init();
 
     var i: isize = @floatToInt(i32, top_left[0]);
     while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
         var a: isize = @floatToInt(i32, top_left[1]);
         while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
             if (this.isSolid(Cell{ i, a })) {
-                try collisions.append(util.AABB{
+                collisions.append(util.AABB{
                     .pos = Vec2f{
                         @intToFloat(f32, i * tile_width),
                         @intToFloat(f32, a * tile_height),

@@ -64,19 +64,67 @@ pub const AABB = struct {
     }
 };
 
-pub fn Queue(comptime T: type, len: usize) type {
+pub fn Queue(comptime T: type) type {
     return struct {
-        data: std.BoundedArray(T, len),
-        pub fn init() !@This() {
+        begin: usize,
+        end: usize,
+        data: []T,
+        pub fn init(slice: []T) @This() {
             return @This(){
-                .data = try std.BoundedArray(T, len).init(0),
+                .begin = 0,
+                .end = 0,
+                .data = slice,
             };
         }
-        pub fn insert(this: *@This(), t: T) !void {
-            try this.data.insert(0, t);
+        fn next(this: @This(), idx: usize) usize {
+            return ((idx + 1) % this.data.len);
         }
-        pub fn remove(this: *@This()) ?Cell {
-            return this.data.popOrNull();
+        pub fn insert(this: *@This(), t: T) !void {
+            const n = this.next(this.end);
+            if (n == this.begin) return error.OutOfMemory;
+            this.data[this.end] = t;
+            this.end = n;
+        }
+        pub fn remove(this: *@This()) ?T {
+            if (this.begin == this.end) return null;
+            const datum = this.data[this.begin];
+            this.begin = this.next(this.begin);
+            return datum;
+        }
+    };
+}
+
+test "Queue" {
+    var items: [3]usize = undefined;
+    var q = Queue(usize).init(&items);
+    try q.insert(1);
+    try q.insert(2);
+    try std.testing.expectError(error.OutOfMemory, q.insert(3));
+    try std.testing.expectEqual(@as(?usize, 1), q.remove());
+    try std.testing.expectEqual(@as(?usize, 2), q.remove());
+    try std.testing.expectEqual(@as(?usize, null), q.remove());
+}
+
+pub fn Buffer(comptime T: type) type {
+    return struct {
+        len: usize,
+        items: []T,
+
+        pub fn init(slice: []T) @This() {
+            return @This(){
+                .len = 0,
+                .items = slice,
+            };
+        }
+
+        pub fn reset(buf: @This()) void {
+            buf.len = 0;
+        }
+
+        pub fn append(buf: @This(), item: T) void {
+            std.debug.assert(buf.len < buf.items.len);
+            buf.items[buf.len] = item;
+            buf.len += 1;
         }
     };
 }
