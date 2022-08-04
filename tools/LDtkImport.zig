@@ -47,7 +47,6 @@ fn make(step: *std.build.Step) !void {
     var data = std.ArrayList(u8).init(allocator);
     defer data.deinit();
     const writer = data.writer();
-    _ = writer;
 
     // TODO: Convert LDtk data into wired format
     const ldtk = try LDtk.parse(allocator, source);
@@ -56,58 +55,78 @@ fn make(step: *std.build.Step) !void {
     if (ldtk.levels.len > 0) {
         const level0 = ldtk.levels[0];
         if (level0.layerInstances) |layers| {
-            var circuit: []const u8 = "null";
-            var collision: []const u8 = "null";
+            const world_x: u8 = @intCast(u8, @divExact(level0.worldX, (ldtk.worldGridWidth orelse 160)));
+            const world_y: u8 = @intCast(u8, @divExact(level0.worldY, (ldtk.worldGridHeight orelse 160)));
+
+            var circuit_layer: ?LDtk.LayerInstance = null;
+            var collision_layer: ?LDtk.LayerInstance = null;
             for (layers) |layer| {
                 if (std.mem.eql(u8, layer.__identifier, "Entities")) {
                     std.debug.assert(layer.__type == .Entities);
                     for (layer.entityInstances) |entity| {
                         std.log.warn("{s}", .{entity.__identifier});
                     }
-                }
-                else if (std.mem.eql(u8, layer.__identifier, "Circuit")) {
+                } else if (std.mem.eql(u8, layer.__identifier, "Circuit")) {
                     std.debug.assert(layer.__type == .IntGrid);
 
-                    var grid_str = try allocator.alloc(u8, @intCast(usize, layer.__cWid * layer.__cHei + layer.__cHei));
-                    defer allocator.free(grid_str);
-                    var i: usize = 0;
-                    var o: usize = 0;
-                    for (layer.intGridCsv) |int| {
-                        grid_str[i + o] = std.fmt.digitToChar(@intCast(u8, int), .lower);
-                        if (grid_str[i] == '0') grid_str[i] = ' ';
-                        i += 1;
-                        if (@mod(i, @intCast(usize, layer.__cWid)) == 0) {
-                            grid_str[i + o] = '\n';
-                            o += 1;
-                        }
-                    }
-
-                    circuit = grid_str;
-                }
-                else if (std.mem.eql(u8, layer.__identifier, "Collision")) {
+                    circuit_layer = layer;
+                } else if (std.mem.eql(u8, layer.__identifier, "Collision")) {
                     std.debug.assert(layer.__type == .IntGrid);
 
-                    var grid_str = try allocator.alloc(u8, @intCast(usize, layer.__cWid * layer.__cHei + layer.__cHei));
-                    var i: usize = 0;
-                    var o: usize = 0;
-                    for (layer.intGridCsv) |int| {
-                        grid_str[i + o] = std.fmt.digitToChar(@intCast(u8, int), .lower);
-                        if (grid_str[i] == '0') grid_str[i] = ' ';
-                        i += 1;
-                        if (@mod(i, @intCast(usize, layer.__cWid)) == 0) {
-                            grid_str[i + o] = '\n';
-                            o += 1;
-                        }
-                    }
-
-                    collision = grid_str;
+                    collision_layer = layer;
                 } else {
                     std.log.warn("{s}: {}", .{ layer.__identifier, layer.__type });
                 }
             }
-            std.log.warn("Circuit IntGrid:\n{s}\nCollision IntGrid:\n{s}", .{ circuit, collision});
-            allocator.free(circuit);
-            allocator.free(collision);
+
+            if (circuit_layer == null) return error.MissingCircuitLayer;
+            if (collision_layer == null) return error.MissingCollisionLayer;
+
+            std.log.warn("Layers found", .{});
+
+            const circuit = circuit_layer.?;
+            const collision = collision_layer.?;
+
+            std.debug.assert(circuit.__cWid == collision.__cWid);
+            std.debug.assert(circuit.__cHei == collision.__cHei);
+
+            const width = @intCast(u16, circuit.__cWid);
+            const size = @intCast(u16, width * circuit.__cHei);
+
+            try (world.LevelHeader{
+                .world_x = world_x,
+                .world_y = world_y,
+                .width = @intCast(u16, width),
+                .size = @intCast(u16, size),
+            }).write(writer);
+
+            var tiles = try allocator.alloc(world.TileStore, size);
+            defer allocator.free(tiles);
+
+            for (collision.autoLayerTiles) |autotile| {
+                const x = @divExact(autotile.px[0], collision.__gridSize);
+                const y = @divExact(autotile.px[1], collision.__gridSize);
+                const i = @intCast(usize, x + y * width);
+                tiles[i] = world.TileStore{
+                    .is_tile = true,
+                    .data = .{ .tile = @intCast(u7, autotile.t) },
+                };
+            }
+
+            for (circuit.intGridCsv) |cir64, i| {
+                const cir = @intCast(u4, cir64);
+                const col = collision.intGridCsv[i];
+                tiles[i] = world.TileStore{
+                    .is_tile = false,
+                    .data = .{
+                        .flags = .{
+                            .solid = col == 1,
+                            .circuit = cir,
+                        },
+                    },
+                };
+                try writer.writeByte(tiles[i].toByte());
+            }
         }
     }
 
