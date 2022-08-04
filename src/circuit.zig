@@ -250,7 +250,7 @@ pub fn addSource(this: *@This(), cell: Cell) void {
 
 pub fn addDoor(this: *@This(), cell: Cell) !void {
     if (this.indexOf(cell)) |_| {
-        try this.doors.append(.{ .cell = cell, .enabled = false });
+        this.doors.append(.{ .cell = cell, .enabled = false });
     }
 }
 

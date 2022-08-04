@@ -1,3 +1,4 @@
+const assets = @import("assets");
 const std = @import("std");
 const w4 = @import("wasm4.zig");
 const input = @import("input.zig");
@@ -6,10 +7,10 @@ const Circuit = @import("circuit.zig");
 const Map = @import("map.zig");
 const Music = @import("music.zig");
 const State = @import("main.zig").State;
-const Disk = @import("disk.zig");
+// const Disk = @import("disk.zig");
 const extract = @import("extract.zig");
 const world = @import("world.zig");
-const world_data = @import("world_data");
+const world_data = @embedFile(@import("world_data").path);
 
 const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
@@ -250,9 +251,6 @@ pub fn start() !void {
 
     const spawnArr = level.getSpawn().?;
     const spawn = Vec2{ spawnArr[0], spawnArr[1] };
-    // std.mem.set(u8, &conduitLevels_mutable, 0);
-    // circuit = try Circuit.init(&conduit_mutable, &conduitLevels_mutable, assets.conduit_size);
-    // map = Map.init(&solids_mutable, assets.solid_size);
 
     camera = @divTrunc(spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
@@ -271,43 +269,47 @@ pub fn start() !void {
         .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
     };
 
-    _ = try wires.resize(0);
-    for (assets.wire) |wire| {
-        var w = try wires.addOne();
-        _ = try w.nodes.resize(0);
-        const divisions = wire.divisions;
-        var i: usize = 0;
-        while (i <= divisions) : (i += 1) {
-            try w.nodes.append(Pos.init(Vec2f{ 0, 0 }));
+    {
+        _ = try wires.resize(0);
+        var a: usize = 0;
+        while (level.getWire(a)) |wire| : (a += 1) {
+            var w = try wires.addOne();
+            _ = try w.nodes.resize(0);
+            // const divisions = wire.divisions;
+            const divisions = 10;
+            var i: usize = 0;
+            while (i <= divisions) : (i += 1) {
+                try w.nodes.append(Pos.init(Vec2f{ 0, 0 }));
+            }
+            w.begin().pos = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size);
+            w.end().pos = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size);
+
+            w.begin().pinned = wire[0].kind == world.EntityKind.WireAnchor;
+            w.end().pinned = wire[1].kind == world.EntityKind.WireEndAnchor;
+
+            w.straighten();
         }
-        w.begin().pos = util.vec2ToVec2f(wire.p1);
-        w.end().pos = util.vec2ToVec2f(wire.p2);
-
-        w.begin().pinned = wire.a1;
-        w.end().pinned = wire.a2;
-
-        w.straighten();
     }
 
-    for (assets.sources) |source| {
-        try circuit.addSource(source);
-    }
-
-    for (assets.doors) |door| {
-        try circuit.addDoor(door);
+    {
+        var i: usize = 0;
+        while (level.getDoor(i)) |door| : (i += 1) {
+            try circuit.addDoor(Vec2{ door.x, door.y });
+        }
     }
 
     try coins.resize(0);
-    if (!try Disk.load()) {
-        for (assets.coins) |coin| {
-            try coins.append(.{
-                .pos = Pos.init(util.vec2ToVec2f(coin * tile_size)),
-                .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
-                .anim = Anim{ .anim = &anim_store.coin },
-                .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
-            });
-        }
+    // if (!try Disk.load()) {
+    var i: usize = 0;
+    while (level.getCoin(i)) |coin| : (i += 1) {
+        try coins.append(.{
+            .pos = Pos.init(util.vec2ToVec2f(Vec2{ coin.x, coin.y } * tile_size)),
+            .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
+            .anim = Anim{ .anim = &anim_store.coin },
+            .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
+        });
     }
+    // }
 
     try updateCircuit();
 }
@@ -358,12 +360,12 @@ pub fn update(time: usize) !State {
             _ = coins.swapRemove(i);
         }
         // We save here to prevent duplicate coins
-        if (shouldSave) Disk.save();
+        // if (shouldSave) Disk.save();
     }
 
     const newCamera = @divTrunc(util.world2cell(player.pos.pos), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
     if (!@reduce(.And, newCamera == camera)) {
-        Disk.save();
+        // Disk.save();
     }
     camera = newCamera;
 
@@ -616,7 +618,7 @@ fn updateCircuit() !void {
         if ((circuit.isEnabled(cellBegin) and begin.pinned) or
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
-    map.reset(&assets.solid);
+    // map.reset(&assets.solid);
     const enabledDoors = try circuit.enabledDoors(frame_alloc);
     for (enabledDoors.items) |door| {
         try map.set_cell(door, 0);

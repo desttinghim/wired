@@ -92,6 +92,7 @@ pub const Level = struct {
             .world_y = try reader.readInt(u8, .Little),
             .width = try reader.readInt(u16, .Little),
             .size = try reader.readInt(u16, .Little),
+            .entity_count = try reader.readInt(u16, .Little),
             .tiles = null,
             .entities = null,
         };
@@ -111,15 +112,56 @@ pub const Level = struct {
         level.entities = buf;
         var i: usize = 0;
         while (i < level.entity_count) : (i += 1) {
-            buf[i] = Entity.read(reader);
+            buf[i] = try Entity.read(reader);
         }
     }
 
     pub fn getSpawn(level: *Level) ?[2]i16 {
         std.debug.assert(level.entities != null);
-        for (level.entities) |entity| {
+        for (level.entities.?) |entity| {
             if (entity.kind == .Player) {
                 return [2]i16{ entity.x, entity.y };
+            }
+        }
+        return null;
+    }
+
+    pub fn getWire(level: *Level, num: usize) ?[2]Entity {
+        std.debug.assert(level.entities != null);
+        var node_begin: ?Entity = null;
+        var wire_count: usize = 0;
+        for (level.entities.?) |entity| {
+            if (entity.kind == .WireNode or entity.kind == .WireAnchor) {
+                node_begin = entity;
+            } else if (entity.kind == .WireEndNode or entity.kind == .WireEndAnchor) {
+                if (node_begin) |begin| {
+                    if (wire_count == num) return [2]Entity{ begin, entity };
+                }
+                wire_count += 1;
+            }
+        }
+        return null;
+    }
+
+    pub fn getDoor(level: *Level, num: usize) ?Entity {
+        std.debug.assert(level.entities != null);
+        var count: usize = 0;
+        for (level.entities.?) |entity| {
+            if (entity.kind == .Door or entity.kind == .Trapdoor) {
+                if (count == num) return entity;
+                count += 1;
+            }
+        }
+        return null;
+    }
+
+    pub fn getCoin(level: *Level, num: usize) ?Entity {
+        std.debug.assert(level.entities != null);
+        var count: usize = 0;
+        for (level.entities.?) |entity| {
+            if (entity.kind == .Coin) {
+                if (count == num) return entity;
+                count += 1;
             }
         }
         return null;
@@ -229,7 +271,9 @@ pub const EntityKind = enum(u8) {
     Player,
     Coin,
     WireNode,
+    WireAnchor,
     WireEndNode,
+    WireEndAnchor,
     Door,
     Trapdoor,
 };
@@ -245,9 +289,11 @@ pub const Entity = struct {
         try writer.writeInt(i16, entity.y, .Little);
     }
 
-    pub fn read(entity: Entity, reader: anytype) !void {
-        try reader.readInt(u8, @intToEnum(EntityKind, entity.kind), .Little);
-        try reader.readInt(i16, entity.x, .Little);
-        try reader.readInt(i16, entity.y, .Little);
+    pub fn read(reader: anytype) !Entity {
+        return Entity{
+            .kind = @intToEnum(EntityKind, try reader.readInt(u8, .Little)),
+            .x = try reader.readInt(i16, .Little),
+            .y = try reader.readInt(i16, .Little),
+        };
     }
 };
