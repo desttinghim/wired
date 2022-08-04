@@ -1,6 +1,7 @@
 //! Uses zig-ldtk to convert a ldtk file into a binary format for wired
 const std = @import("std");
 const LDtk = @import("../deps/zig-ldtk/src/LDtk.zig");
+const world = @import("../src/world.zig");
 
 const KB = 1024;
 const MB = 1024 * KB;

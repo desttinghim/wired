@@ -4,7 +4,7 @@ const assets = @import("assets");
 const input = @import("input.zig");
 const util = @import("util.zig");
 
-const game = @import("game.zig");
+const game = @import("rewrite.zig");
 const menu = @import("menu.zig");
 
 pub const State = enum {
@@ -30,7 +30,6 @@ export fn update() void {
         .Game => game.update(time) catch |e| switch (e) {
             error.Overflow => showErr(@errorName(e)),
             error.OutOfBounds => showErr(@errorName(e)),
-            // error.IndexOutOfBounds => showErr(@errorName(e)),
         },
     };
     if (state != newState) {
@@ -40,7 +39,6 @@ export fn update() void {
             .Game => game.start() catch |e| switch (e) {
                 error.Overflow => showErr(@errorName(e)),
                 error.OutOfBounds => showErr(@errorName(e)),
-                // error.IndexOutOfBounds => showErr(@errorName(e)),
             },
         }
     }

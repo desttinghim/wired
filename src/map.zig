@@ -7,8 +7,6 @@ const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
 const Cell = util.Cell;
 
-const MAXCELLS = 400;
-
 const width = 20;
 const height = 20;
 const tile_width = 8;

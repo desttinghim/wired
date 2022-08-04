@@ -1,68 +1,62 @@
-const TileValue = union(enum) {
-    Tile,
-    Size,
+//! Data types used for storing world info
+
+// Tile Storage Types
+pub const CircuitType = enum(u4) {
+    None = 0,
+    Conduit = 1,
+    Plug = 2,
+    Switch_Off = 3,
+    Switch_On = 4,
+    Join = 5,
+    And = 6,
+    Xor = 7,
+    Outlet = 8,
+    Source = 9,
 };
 
-// 2 Modes
-// Tile:
-//      0b0TTT_TTTT
-// 2 layer:
-//      0b1XXS_CCCC
-// T = Tile number, 0-127
-// X = Reserved
-// S = Solid
-// C = Circuit
+pub const TileData = packed union {
+    tile: u7,
+    flags: packed struct {
+        solid: bool,
+        circuit: u4,
+    },
+};
 
-/// 0bDCBA
-/// +---+---+
-/// | A | B |
-/// +---+---+
-/// | C | D |
-/// +---+---+
-/// NE 0b0001
-/// NW 0b0010
-/// SW 0b0100
-/// SE 0b1000
-/// 0 -
-const AutoTileRule = struct {
-    A: u8,
-    B: u8,
+pub const TileStore = packed struct {
+    is_tile: bool,
+    data: TileData,
+};
+
+pub const LevelHeader = struct {
+    world_x: u8,
+    world_y: u8,
+    width: u16,
+    size:  u16,
+};
+
+pub const Level = struct {
+    world_x: u8,
+    world_y: u8,
+    width: u16,
+    tiles: []TileStore,
+};
+
+// AutoTile algorithm datatypes
+pub const AutoTile = packed struct {
+    North: bool,
+    West: bool,
+    South: bool,
+    East: bool,
+
+    pub fn to_u4(autotile: AutoTile) u4 {
+        return @bitCast(u4, autotile);
+    }
+
+    pub fn from_u4(int: u4) AutoTile {
+        return @bitCast(AutoTile, int);
+    }
+};
+
+pub const AutoTileset = struct {
     lookup: [16]u8,
-};
-
-/// Reference enum mapping numbers to names
-/// X = Exclude (only one side present)
-/// N = North
-/// W = West
-/// E = East
-/// S = South
-/// H = Horizontal
-/// V = Vertical
-pub const Side = enum(u4) {
-    X_ALL = 0,
-    N = 1,
-    W = 2,
-    NW = 3,
-    E = 4,
-    NE = 5,
-    H_BEAM = 6,
-    X_S = 7,
-    S = 8,
-    V_BEAM = 9,
-    SW = 10,
-    X_E = 11,
-    SE = 12,
-    X_W = 13,
-    X_N = 14,
-    ALL =  15,
-};
-
-const AutoTiling = struct {
-    /// Bitmask to tile mapping
-    const AutoTileLookup = [16]u8;
-
-    tables: []AutoTileLookup,
-    /// Use value A for out of bounds
-    outOfBounds: u8,
-    values: []u8,
 };

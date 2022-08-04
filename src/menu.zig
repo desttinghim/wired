@@ -36,7 +36,7 @@ pub fn update() State {
         switch (@intToEnum(MenuOptions, selected)) {
             .Continue => return .Game,
             .NewGame => {
-                _ = w4.diskw("", 0);
+                // _ = w4.diskw("", 0);
                 return .Game;
             },
         }
