@@ -44,7 +44,7 @@ pub fn start() !void {
         .level = level,
         .map = &map,
         .circuit = &circuit,
-        .tileset = world.AutoTileset{ .lookup = .{
+        .tileset = world.AutoTileset.initFull(&.{
             35, // Island
             51, // North
             52, // West
@@ -61,8 +61,8 @@ pub fn start() !void {
             37, // South-East-North
             22, // South-East-West
             0, // South-East-West-North
-        }},
-        .conduit = world.AutoTileset{ .lookup = .{
+        }),
+        .conduit = world.AutoTileset.initFull(&.{
             42, // Island
             58, // North
             59, // West
@@ -79,61 +79,23 @@ pub fn start() !void {
             75, // South-East-North
             72, // South-East-West
             43, // South-East-West-North
-        } },
-        .plug = world.AutoTileset{ .lookup = .{
-            02, // Island
+        }),
+        .plug = world.AutoTileset.initCardinal(&.{
             45, // North
             46, // West
-            02, // West-North
             47, // East
-            02, // East-North
-            02, // East-West
-            02, // East-West-North
             44, // South
-            02, // South-North
-            02, // South-West
-            02, // South-West-North
-            02, // South-East
-            02, // South-East-North
-            02, // South-East-West
-            02, // South-East-West-North
-        } },
-        .switch_off = world.AutoTileset{ .lookup = .{
-            02, // Island
-            02, // North
-            02, // West
-            02, // West-North
-            02, // East
-            02, // East-North
-            02, // East-West
-            02, // East-West-North
-            02, // South
+        }, 2),
+        .switch_off = world.AutoTileset.initSwitches(&.{
             32, // South-North
-            02, // South-West
             29, // South-West-North
-            02, // South-East
             31, // South-East-North
-            02, // South-East-West
-            02, // South-East-West-North
-        } },
-        .switch_on = world.AutoTileset{ .lookup = .{
-            02, // Island
-            02, // North
-            02, // West
-            02, // West-North
-            02, // East
-            02, // East-North
-            02, // East-West
-            02, // East-West-North
-            02, // South
+        }, 2),
+        .switch_on = world.AutoTileset.initSwitches(&.{
             48, // South-North
-            02, // South-West
             28, // South-West-North
-            02, // South-East
-            02, // South-East-North
             30, // South-East-West
-            02, // South-East-West-North
-        } },
+        }, 2),
     });
 }
 

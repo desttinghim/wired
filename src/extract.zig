@@ -113,8 +113,7 @@ pub fn extractLevel(opt: Options) !void {
 
     for (autotiles) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
-            const li = autotile.to_u4();
-            const tile = tileset.lookup[li];
+            const tile = tileset.find(autotile);
             map.tiles[i] = tile;
         }
     }
@@ -177,12 +176,11 @@ pub fn extractLevel(opt: Options) !void {
 
     for (autotiles) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
-            const li = autotile.to_u4();
             const tile = switch (circuit_map[i]) {
-                .Conduit, .Source, .Join => opt.conduit.lookup[li],
-                .Switch_On => opt.switch_on.lookup[li],
-                .Switch_Off => opt.switch_off.lookup[li],
-                .Plug => opt.plug.lookup[li],
+                .Conduit, .Source, .Join => opt.conduit.find(autotile),
+                .Switch_On => opt.switch_on.find(autotile),
+                .Switch_Off => opt.switch_off.find(autotile),
+                .Plug => opt.plug.find(autotile),
                 .And => 60,
                 .Xor => 62,
                 else => 0,

@@ -96,7 +96,7 @@ pub const Level = struct {
     tiles: []TileStore,
 
     pub fn init(header: LevelHeader, buf: []TileStore) Level {
-        return Level {
+        return Level{
             .world_x = header.world_x,
             .world_y = header.world_y,
             .width = header.width,
@@ -122,5 +122,58 @@ pub const AutoTile = packed struct {
 };
 
 pub const AutoTileset = struct {
-    lookup: [16]u8,
+    lookup: []const u8,
+    kind: enum {
+        Cardinal,
+        Switches,
+        Full,
+    },
+    default: u8,
+
+    pub fn initFull(table: []const u8) AutoTileset {
+        std.debug.assert(table.len == 16);
+        return AutoTileset{
+            .lookup = table,
+            .kind = .Full,
+            .default = 0,
+        };
+    }
+
+    pub fn initCardinal(table: []const u8, default: u8) AutoTileset {
+        std.debug.assert(table.len == 4);
+        return AutoTileset{
+            .lookup = table,
+            .kind = .Cardinal,
+            .default = default,
+        };
+    }
+
+    pub fn initSwitches(table: []const u8, default: u8) AutoTileset {
+        std.debug.assert(table.len == 3);
+        return AutoTileset{
+            .lookup = table,
+            .kind = .Switches,
+            .default = default,
+        };
+    }
+
+    pub fn find(tileset: AutoTileset, autotile: AutoTile) u8 {
+        const autoint = autotile.to_u4();
+        switch (tileset.kind) {
+            .Full => return tileset.lookup[autoint],
+            .Cardinal => switch (autoint) {
+                0b0001 => return tileset.lookup[0],
+                0b0010 => return tileset.lookup[1],
+                0b0100 => return tileset.lookup[2],
+                0b1000 => return tileset.lookup[3],
+                else => return tileset.default,
+            },
+            .Switches => switch (autoint) {
+                0b1001 => return tileset.lookup[0],
+                0b1011 => return tileset.lookup[1],
+                0b1101 => return tileset.lookup[2],
+                else => return tileset.default,
+            },
+        }
+    }
 };
