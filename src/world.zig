@@ -32,7 +32,7 @@ pub const TileStore = struct {
         if (store.is_tile) {
             return 1 | (store.data.tile << 1);
         } else {
-            return 0 | (@intCast(u2, @boolToInt(store.data.flags.solid)) << 1) | (store.data.flags.circuit << 2);
+            return (@intCast(u7, @boolToInt(store.data.flags.solid)) << 1) | (@intCast(u7, store.data.flags.circuit) << 2);
         }
     }
 
@@ -41,14 +41,14 @@ pub const TileStore = struct {
         if (is_tile) {
             const tile = @intCast(u7, (~@as(u7, 1) & byte) >> 1);
             return TileStore{
-                .is_tile = is_tile,
+                .is_tile = true,
                 .data = .{ .tile = tile },
             };
         } else {
             const is_solid = (0b0000_0010 & byte) > 0;
             const circuit = @intCast(u4, (0b0011_1100 & byte) >> 2);
             return TileStore{
-                .is_tile = is_tile,
+                .is_tile = false,
                 .data = .{ .flags = .{
                     .solid = is_solid,
                     .circuit = circuit,

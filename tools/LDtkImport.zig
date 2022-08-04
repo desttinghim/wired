@@ -112,22 +112,25 @@ fn make(step: *std.build.Step) !void {
                 const i = @intCast(usize, x + y * width);
                 tiles[i] = world.TileStore{
                     .is_tile = true,
-                    .data = .{ .tile = @intCast(u7, autotile.t) },
+                    .data = .{ .tile = @intCast(u7, autotile.t + 1) },
                 };
             }
 
             for (circuit.intGridCsv) |cir64, i| {
                 const cir = @intCast(u4, cir64);
                 const col = collision.intGridCsv[i];
-                tiles[i] = world.TileStore{
-                    .is_tile = false,
-                    .data = .{
-                        .flags = .{
+                if (col != 2) {
+                    tiles[i] = world.TileStore{
+                        .is_tile = false,
+                        .data = .{ .flags = .{
                             .solid = col == 1,
                             .circuit = cir,
-                        },
-                    },
-                };
+                        } },
+                    };
+                }
+                if (col == 2) {
+                    tiles[i].is_tile = true;
+                }
                 try writer.writeByte(tiles[i].toByte());
             }
         }

@@ -35,19 +35,19 @@ pub fn extractLevel(opt: Options) !void {
     map.map_size = .{ level.width, height };
     circuit.map_size = .{ level.width, height };
 
-    var solid_map = try alloc.alloc(bool, size);
-    defer alloc.free(solid_map);
+    var auto_map = try alloc.alloc(bool, size);
+    defer alloc.free(auto_map);
 
     var circuit_map = try alloc.alloc(CircuitType, size);
     defer alloc.free(circuit_map);
 
     for (level.tiles) |tile, i| {
         if (tile.is_tile) {
-            // solid_map[i] = is_solid(tile.data.tile);
+            auto_map[i] = false;
             map.tiles[i] = tile.data.tile;
             circuit_map[i] = .None;
         } else {
-            solid_map[i] = tile.data.flags.solid;
+            auto_map[i] = tile.data.flags.solid;
             circuit_map[i] = @intToEnum(CircuitType, tile.data.flags.circuit);
         }
     }
@@ -62,7 +62,7 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
-            if (!solid_map[i]) {
+            if (!auto_map[i]) {
                 autotiles[i] = null;
                 continue;
             }
@@ -76,25 +76,25 @@ pub fn extractLevel(opt: Options) !void {
             // Check horizontal neighbors
             if (x == 0) {
                 west = out_of_bounds;
-                east = solid_map[i + 1];
+                east = auto_map[i + 1];
             } else if (x == width - 1) {
-                west = solid_map[i - 1];
+                west = auto_map[i - 1];
                 east = out_of_bounds;
             } else {
-                west = solid_map[i - 1];
-                east = solid_map[i + 1];
+                west = auto_map[i - 1];
+                east = auto_map[i + 1];
             }
 
             // Check vertical neighbours
             if (y == 0) {
                 north = out_of_bounds;
-                south = solid_map[i + stride];
+                south = auto_map[i + stride];
             } else if (y == height - 1) {
-                north = solid_map[i - stride];
+                north = auto_map[i - stride];
                 south = out_of_bounds;
             } else {
-                north = solid_map[i - stride];
-                south = solid_map[i + stride];
+                north = auto_map[i - stride];
+                south = auto_map[i + stride];
             }
 
             autotiles[i] = AutoTile{
@@ -111,6 +111,10 @@ pub fn extractLevel(opt: Options) !void {
             const li = autotile.to_u4();
             const tile = tileset.lookup[li];
             map.tiles[i] = tile;
+        } else {
+            const x = @mod(i, width);
+            const y = @divTrunc(i, width);
+            w4.trace("{}, {}: {}", .{ x, y, map.tiles[i] });
         }
     }
 }
