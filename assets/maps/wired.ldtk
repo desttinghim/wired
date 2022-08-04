@@ -10,7 +10,7 @@
 	},
 	"jsonVersion": "1.1.3",
 	"appBuildId": 458364,
-	"nextUid": 99,
+	"nextUid": 100,
 	"identifierStyle": "Capitalize",
 	"worldLayout": "GridVania",
 	"worldGridWidth": 160,
@@ -39,7 +39,7 @@
 			"identifier": "Entities",
 			"type": "Entities",
 			"uid": 32,
-			"gridSize": 4,
+			"gridSize": 8,
 			"guideGridWid": 8,
 			"guideGridHei": 8,
 			"displayOpacity": 1,
@@ -2090,9 +2090,9 @@
 				{
 					"__identifier": "Entities",
 					"__type": "Entities",
-					"__cWid": 40,
-					"__cHei": 40,
-					"__gridSize": 4,
+					"__cWid": 20,
+					"__cHei": 20,
+					"__gridSize": 8,
 					"__opacity": 1,
 					"__pxTotalOffsetX": 0,
 					"__pxTotalOffsetY": 0,
@@ -2113,7 +2113,7 @@
 					"entityInstances": [
 						{
 							"__identifier": "Player",
-							"__grid": [2,36],
+							"__grid": [1,18],
 							"__pivot": [0,0],
 							"__tags": [],
 							"__tile": null,
@@ -2127,7 +2127,7 @@
 						},
 						{
 							"__identifier": "Door",
-							"__grid": [0,36],
+							"__grid": [0,18],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -2141,7 +2141,7 @@
 						},
 						{
 							"__identifier": "Door",
-							"__grid": [22,36],
+							"__grid": [10,18],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -2150,12 +2150,12 @@
 							"width": 8,
 							"height": 8,
 							"defUid": 60,
-							"px": [88,144],
+							"px": [80,144],
 							"fieldInstances": []
 						},
 						{
 							"__identifier": "Door",
-							"__grid": [10,22],
+							"__grid": [5,11],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -2169,7 +2169,7 @@
 						},
 						{
 							"__identifier": "Coin",
-							"__grid": [30,36],
+							"__grid": [15,18],
 							"__pivot": [0,0],
 							"__tags": [],
 							"__tile": { "tilesetUid": 1, "x": 32, "y": 0, "w": 8, "h": 8 },
@@ -2183,7 +2183,7 @@
 						},
 						{
 							"__identifier": "Coin",
-							"__grid": [4,22],
+							"__grid": [2,11],
 							"__pivot": [0,0],
 							"__tags": [],
 							"__tile": { "tilesetUid": 1, "x": 32, "y": 0, "w": 8, "h": 8 },
@@ -2197,7 +2197,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [5,29],
+							"__grid": [2,14],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -2208,13 +2208,10 @@
 							"defUid": 93,
 							"px": [20,116],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 7, "cy": 31 }, { "cx": 9, "cy": 29 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [{ "cx": 4, "cy": 14 }], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [{
 									"id": "V_String",
-									"params": ["7,31"]
-								}, {
-									"id": "V_String",
-									"params": ["9,29"]
-								} ] },
+									"params": ["4,14"]
+								}] },
 								{ "__identifier": "Anchor", "__value": [ true, true ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
 									"params": [ true ]
@@ -2226,7 +2223,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [21,19],
+							"__grid": [10,9],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -2237,12 +2234,12 @@
 							"defUid": 93,
 							"px": [84,76],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 20, "cy": 23 }, { "cx": 14, "cy": 23 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [ { "cx": 9, "cy": 11 }, { "cx": 7, "cy": 11 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
 									"id": "V_String",
-									"params": ["20,23"]
+									"params": ["9,11"]
 								}, {
 									"id": "V_String",
-									"params": ["14,23"]
+									"params": ["7,11"]
 								} ] },
 								{ "__identifier": "Anchor", "__value": [ true, false ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
@@ -2559,9 +2556,9 @@
 				{
 					"__identifier": "Entities",
 					"__type": "Entities",
-					"__cWid": 40,
-					"__cHei": 40,
-					"__gridSize": 4,
+					"__cWid": 20,
+					"__cHei": 20,
+					"__gridSize": 8,
 					"__opacity": 1,
 					"__pxTotalOffsetX": 0,
 					"__pxTotalOffsetY": 0,
@@ -2582,7 +2579,7 @@
 					"entityInstances": [
 						{
 							"__identifier": "Trapdoor",
-							"__grid": [8,20],
+							"__grid": [4,10],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 24, "y": 0, "w": 8, "h": 8 },
@@ -2596,7 +2593,7 @@
 						},
 						{
 							"__identifier": "Trapdoor",
-							"__grid": [24,20],
+							"__grid": [12,10],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 24, "y": 0, "w": 8, "h": 8 },
@@ -2610,7 +2607,7 @@
 						},
 						{
 							"__identifier": "Coin",
-							"__grid": [14,24],
+							"__grid": [7,12],
 							"__pivot": [0,0],
 							"__tags": [],
 							"__tile": { "tilesetUid": 1, "x": 32, "y": 0, "w": 8, "h": 8 },
@@ -2624,7 +2621,7 @@
 						},
 						{
 							"__identifier": "Coin",
-							"__grid": [20,36],
+							"__grid": [10,18],
 							"__pivot": [0,0],
 							"__tags": [],
 							"__tile": { "tilesetUid": 1, "x": 32, "y": 0, "w": 8, "h": 8 },
@@ -2638,7 +2635,7 @@
 						},
 						{
 							"__identifier": "Door",
-							"__grid": [28,4],
+							"__grid": [14,2],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -2652,7 +2649,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [17,15],
+							"__grid": [8,7],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -2663,12 +2660,12 @@
 							"defUid": 93,
 							"px": [68,60],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 18, "cy": 18 }, { "cx": 22, "cy": 19 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [ { "cx": 9, "cy": 9 }, { "cx": 11, "cy": 9 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
 									"id": "V_String",
-									"params": ["18,18"]
+									"params": ["9,9"]
 								}, {
 									"id": "V_String",
-									"params": ["22,19"]
+									"params": ["11,9"]
 								} ] },
 								{ "__identifier": "Anchor", "__value": [ true, false ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
@@ -2971,9 +2968,9 @@
 				{
 					"__identifier": "Entities",
 					"__type": "Entities",
-					"__cWid": 40,
-					"__cHei": 40,
-					"__gridSize": 4,
+					"__cWid": 20,
+					"__cHei": 20,
+					"__gridSize": 8,
 					"__opacity": 1,
 					"__pxTotalOffsetX": 0,
 					"__pxTotalOffsetY": 0,
@@ -2994,7 +2991,7 @@
 					"entityInstances": [
 						{
 							"__identifier": "Door",
-							"__grid": [14,10],
+							"__grid": [7,5],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -3008,7 +3005,7 @@
 						},
 						{
 							"__identifier": "Door",
-							"__grid": [22,32],
+							"__grid": [11,16],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 16, "y": 0, "w": 8, "h": 8 },
@@ -3022,7 +3019,7 @@
 						},
 						{
 							"__identifier": "Trapdoor",
-							"__grid": [4,34],
+							"__grid": [2,17],
 							"__pivot": [0,0],
 							"__tags": ["Door"],
 							"__tile": { "tilesetUid": 1, "x": 24, "y": 0, "w": 8, "h": 8 },
@@ -3036,7 +3033,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [15,17],
+							"__grid": [7,8],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -3047,12 +3044,12 @@
 							"defUid": 93,
 							"px": [60,68],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 17, "cy": 19 }, { "cx": 23, "cy": 19 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [ { "cx": 8, "cy": 9 }, { "cx": 12, "cy": 9 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
 									"id": "V_String",
-									"params": ["17,19"]
+									"params": ["8,9"]
 								}, {
 									"id": "V_String",
-									"params": ["23,19"]
+									"params": ["12,9"]
 								} ] },
 								{ "__identifier": "Anchor", "__value": [ true, false ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
@@ -3062,7 +3059,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [37,17],
+							"__grid": [18,8],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -3073,12 +3070,12 @@
 							"defUid": 93,
 							"px": [148,68],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 34, "cy": 19 }, { "cx": 26, "cy": 19 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [ { "cx": 17, "cy": 9 }, { "cx": 12, "cy": 9 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
 									"id": "V_String",
-									"params": ["34,19"]
+									"params": ["17,9"]
 								}, {
 									"id": "V_String",
-									"params": ["26,19"]
+									"params": ["12,9"]
 								} ] },
 								{ "__identifier": "Anchor", "__value": [ true, false ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
@@ -3088,7 +3085,7 @@
 						},
 						{
 							"__identifier": "Wire",
-							"__grid": [37,3],
+							"__grid": [18,1],
 							"__pivot": [0.5,0.5],
 							"__tags": [],
 							"__tile": null,
@@ -3099,12 +3096,12 @@
 							"defUid": 93,
 							"px": [148,12],
 							"fieldInstances": [
-								{ "__identifier": "Point", "__value": [ { "cx": 35, "cy": 5 }, { "cx": 27, "cy": 5 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
+								{ "__identifier": "Point", "__value": [ { "cx": 17, "cy": 2 }, { "cx": 13, "cy": 2 } ], "__type": "Array<Point>", "__tile": null, "defUid": 94, "realEditorValues": [ {
 									"id": "V_String",
-									"params": ["35,5"]
+									"params": ["17,2"]
 								}, {
 									"id": "V_String",
-									"params": ["27,5"]
+									"params": ["13,2"]
 								} ] },
 								{ "__identifier": "Anchor", "__value": [ true, false ], "__type": "Array<Bool>", "__tile": null, "defUid": 98, "realEditorValues": [ {
 									"id": "V_Bool",
@@ -3438,9 +3435,9 @@
 				{
 					"__identifier": "Entities",
 					"__type": "Entities",
-					"__cWid": 40,
-					"__cHei": 40,
-					"__gridSize": 4,
+					"__cWid": 20,
+					"__cHei": 20,
+					"__gridSize": 8,
 					"__opacity": 1,
 					"__pxTotalOffsetX": 0,
 					"__pxTotalOffsetY": 0,

@@ -55,9 +55,58 @@ fn make(step: *std.build.Step) !void {
     if (ldtk.levels.len > 0) {
         const level0 = ldtk.levels[0];
         if (level0.layerInstances) |layers| {
+            var circuit: []const u8 = "null";
+            var collision: []const u8 = "null";
             for (layers) |layer| {
-                std.log.warn("{s}: {}", .{ layer.__identifier, layer.__type });
+                if (std.mem.eql(u8, layer.__identifier, "Entities")) {
+                    std.debug.assert(layer.__type == .Entities);
+                    for (layer.entityInstances) |entity| {
+                        std.log.warn("{s}", .{entity.__identifier});
+                    }
+                }
+                else if (std.mem.eql(u8, layer.__identifier, "Circuit")) {
+                    std.debug.assert(layer.__type == .IntGrid);
+
+                    var grid_str = try allocator.alloc(u8, @intCast(usize, layer.__cWid * layer.__cHei + layer.__cHei));
+                    defer allocator.free(grid_str);
+                    var i: usize = 0;
+                    var o: usize = 0;
+                    for (layer.intGridCsv) |int| {
+                        grid_str[i + o] = std.fmt.digitToChar(@intCast(u8, int), .lower);
+                        if (grid_str[i] == '0') grid_str[i] = ' ';
+                        i += 1;
+                        if (@mod(i, @intCast(usize, layer.__cWid)) == 0) {
+                            grid_str[i + o] = '\n';
+                            o += 1;
+                        }
+                    }
+
+                    circuit = grid_str;
+                }
+                else if (std.mem.eql(u8, layer.__identifier, "Collision")) {
+                    std.debug.assert(layer.__type == .IntGrid);
+
+                    var grid_str = try allocator.alloc(u8, @intCast(usize, layer.__cWid * layer.__cHei + layer.__cHei));
+                    var i: usize = 0;
+                    var o: usize = 0;
+                    for (layer.intGridCsv) |int| {
+                        grid_str[i + o] = std.fmt.digitToChar(@intCast(u8, int), .lower);
+                        if (grid_str[i] == '0') grid_str[i] = ' ';
+                        i += 1;
+                        if (@mod(i, @intCast(usize, layer.__cWid)) == 0) {
+                            grid_str[i + o] = '\n';
+                            o += 1;
+                        }
+                    }
+
+                    collision = grid_str;
+                } else {
+                    std.log.warn("{s}: {}", .{ layer.__identifier, layer.__type });
+                }
             }
+            std.log.warn("Circuit IntGrid:\n{s}\nCollision IntGrid:\n{s}", .{ circuit, collision});
+            allocator.free(circuit);
+            allocator.free(collision);
         }
     }
 
