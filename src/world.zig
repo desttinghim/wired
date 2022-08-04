@@ -111,20 +111,22 @@ pub const AutoTile = packed struct {
 };
 
 pub const AutoTileset = struct {
-    lookup: []const u8,
+    lookup: []const u8 = "",
+    offset: u8 = 0,
     kind: enum {
         Cardinal,
         Switches,
         Full,
+        OffsetFull,
+        OffsetCardinal,
     },
-    default: u8,
+    default: u8 = 0,
 
     pub fn initFull(table: []const u8) AutoTileset {
         std.debug.assert(table.len == 16);
         return AutoTileset{
             .lookup = table,
             .kind = .Full,
-            .default = 0,
         };
     }
 
@@ -146,16 +148,40 @@ pub const AutoTileset = struct {
         };
     }
 
+    pub fn initOffsetFull(offset: u8) AutoTileset {
+        // std.debug.assert(offset < 128 - 16);
+        return AutoTileset{
+            .offset = offset,
+            .kind = .OffsetFull,
+        };
+    }
+
+    pub fn initOffsetCardinal(offset: u8) AutoTileset {
+        // std.debug.assert(offset < 128 - 4);
+        return AutoTileset{
+            .offset = offset,
+            .kind = .OffsetCardinal,
+        };
+    }
+
     pub fn find(tileset: AutoTileset, autotile: AutoTile) u8 {
         const autoint = autotile.to_u4();
         switch (tileset.kind) {
             .Full => return tileset.lookup[autoint],
-            .Cardinal => switch (autoint) {
-                0b0001 => return tileset.lookup[0],
-                0b0010 => return tileset.lookup[1],
-                0b0100 => return tileset.lookup[2],
-                0b1000 => return tileset.lookup[3],
-                else => return tileset.default,
+            .OffsetFull => return tileset.offset + autoint,
+            .Cardinal, .OffsetCardinal => {
+                const index: u8 = switch (autoint) {
+                    0b0001 => 0,
+                    0b0010 => 1,
+                    0b0100 => 2,
+                    0b1000 => 3,
+                    else => return tileset.default,
+                };
+                if (tileset.kind == .Cardinal) {
+                    return tileset.lookup[index];
+                } else {
+                    return tileset.offset + index;
+                }
             },
             .Switches => switch (autoint) {
                 0b1001 => return tileset.lookup[0],

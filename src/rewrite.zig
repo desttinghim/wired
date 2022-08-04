@@ -58,57 +58,18 @@ pub fn start() !void {
         .level = level,
         .map = &map,
         .circuit = &circuit,
-        .tileset = world.AutoTileset.initFull(&.{
-            35, // Island
-            51, // North
-            52, // West
-            55, // West-North
-            50, // East
-            53, // East-North
-            19, // East-West
-            54, // East-West-North
-            49, // South
-            20, // South-North
-            23, // South-West
-            39, // South-West-North
-            21, // South-East
-            37, // South-East-North
-            22, // South-East-West
-            0, // South-East-West-North
-        }),
-        .conduit = world.AutoTileset.initFull(&.{
-            42, // Island
-            58, // North
-            59, // West
-            41, // West-North
-            57, // East
-            40, // East-North
-            26, // East-West
-            73, // East-West-North
-            56, // South
-            27, // South-North
-            25, // South-West
-            74, // South-West-North
-            24, // South-East
-            75, // South-East-North
-            72, // South-East-West
-            43, // South-East-West-North
-        }),
-        .plug = world.AutoTileset.initCardinal(&.{
-            45, // North
-            46, // West
-            47, // East
-            44, // South
-        }, 2),
+        .tileset = world.AutoTileset.initOffsetFull(113),
+        .conduit = world.AutoTileset.initOffsetFull(97),
+        .plug = world.AutoTileset.initOffsetCardinal(17),
         .switch_off = world.AutoTileset.initSwitches(&.{
-            32, // South-North
-            29, // South-West-North
-            31, // South-East-North
+            29, // South-North
+            25, // South-West-North
+            27, // South-East-North
         }, 2),
         .switch_on = world.AutoTileset.initSwitches(&.{
-            48, // South-North
-            28, // South-West-North
-            30, // South-East-West
+            30, // South-North
+            26, // South-West-North
+            28, // South-East-West
         }, 2),
     });
 }
