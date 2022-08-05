@@ -14,11 +14,11 @@ pub fn is_plug(tile: u8) bool {
 }
 
 pub fn is_conduit(tile: u8) bool {
-    return tile >= 97 and tile <= 112;
+    return tile >= 97 and tile <= 113;
 }
 
 pub fn is_switch(tile: u8) bool {
-    return tile >= 25 and tile <= 32;
+    return tile >= 24 and tile <= 31;
 }
 
 pub fn is_logic(tile: u8) bool {
@@ -28,17 +28,17 @@ pub fn is_logic(tile: u8) bool {
 pub fn toggle_switch(tile: u8) u8 {
     return switch (tile) {
         // Tee west
-        25 => 26,
-        26 => 25,
+        24 => 25,
+        25 => 24,
         // Tee east
-        27 => 28,
-        28 => 27,
+        26 => 27,
+        27 => 26,
         // Vertical
-        29 => 30,
-        30 => 29,
+        28 => 29,
+        29 => 28,
         // Horizontal
-        31 => 32,
-        32 => 21,
+        30 => 31,
+        31 => 30,
         // Not a switch, pass tile through
         else => tile,
     };
@@ -75,14 +75,14 @@ const Current = [4]bool;
 fn get_inputs(tile: u8) Current {
     return switch (tile) {
         // Conduit recieves from every side
-        17...20,
+        16...20,
         43...47,
         97...113,
         => .{ true, true, true, true },
         // Switch_On
         25,
         27,
-        30,
+        29,
         => .{ true, false, true, false },
         // Switch_Off
         26,
@@ -101,7 +101,7 @@ fn get_inputs(tile: u8) Current {
 fn get_outputs(tile: u8) Current {
     return switch (tile) {
         // Conduit goes out every side
-        17...21,
+        16...20,
         43...47,
         97...113,
         => .{ true, true, true, true },
@@ -135,8 +135,8 @@ const Plugs = [4]bool;
 fn get_plugs(tile: u8) Plugs {
     return switch (tile) {
         17 => .{ false, false, true, false },
-        18 => .{ false, false, false, true },
-        19 => .{ false, true, false, false },
+        18 => .{ false, true, false, false },
+        19 => .{ false, false, false, true },
         20 => .{ true, false, false, false },
         else => .{ false, false, false, false },
     };
