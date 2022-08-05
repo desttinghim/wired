@@ -29,7 +29,7 @@ export fn update() void {
         .Menu => menu.update(),
         .Game => game.update(time) catch |e| switch (e) {
             error.Overflow => showErr(@errorName(e)),
-            error.OutOfBounds => showErr(@errorName(e)),
+            // error.OutOfBounds => showErr(@errorName(e)),
             // error.EndOfStream => showErr(@errorName(e)),
             error.OutOfMemory => showErr(@errorName(e)),
         },
@@ -40,7 +40,7 @@ export fn update() void {
             .Menu => menu.start(),
             .Game => game.start() catch |e| switch (e) {
                 error.Overflow => showErr(@errorName(e)),
-                error.OutOfBounds => showErr(@errorName(e)),
+                // error.OutOfBounds => showErr(@errorName(e)),
                 error.EndOfStream => showErr(@errorName(e)),
                 error.OutOfMemory => showErr(@errorName(e)),
                 error.NullTiles => showErr(@errorName(e)),

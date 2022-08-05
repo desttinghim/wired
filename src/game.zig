@@ -144,7 +144,7 @@ var fba_buf: [4096]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
 var alloc = fba.allocator();
 
-var frame_fba_buf: [4096]u8 = undefined;
+var frame_fba_buf: [8192]u8 = undefined;
 var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
 var frame_alloc = frame_fba.allocator();
 
@@ -193,11 +193,6 @@ const playerAnim = pac: {
     animArr.append(&anim_store.wallSlide) catch unreachable;
     break :pac animArr.slice();
 };
-
-fn showErr(msg: []const u8) noreturn {
-    w4.traceNoF(msg);
-    unreachable;
-}
 
 pub fn start() !void {
     particles = try ParticleSystem.init();
@@ -619,10 +614,10 @@ fn updateCircuit() !void {
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
     // map.reset(&assets.solid);
-    const enabledDoors = try circuit.enabledDoors(frame_alloc);
-    for (enabledDoors.items) |door| {
-        try map.set_cell(door, 0);
-    }
+    // const enabledDoors = try circuit.enabledDoors(frame_alloc);
+    // for (enabledDoors.items) |door| {
+    //     try map.set_cell(door, 0);
+    // }
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {
