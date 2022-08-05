@@ -2,6 +2,7 @@ const std = @import("std");
 const assets = @import("assets");
 const util = @import("util.zig");
 const w4 = @import("wasm4.zig");
+const world = @import("world.zig");
 
 const Vec2 = util.Vec2;
 const Vec2f = util.Vec2f;
@@ -127,7 +128,6 @@ pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
     while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
         var a: isize = @floatToInt(i32, top_left[1]);
         while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
-
             const tile = this.getTile(i, a) orelse continue;
             const tilex = @intToFloat(f32, i * tile_width);
             const tiley = @intToFloat(f32, a * tile_height);
@@ -137,17 +137,16 @@ pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
             if (isOneWay(tile)) {
                 if (!body.is_passing and a == bottom and body.last[1] <= body.next[1] and foot < tiley + 2) {
                     collisions.append(util.AABB{
-                        .pos = Vec2f{tilex, tiley},
+                        .pos = Vec2f{ tilex, tiley },
                         .size = tile_sizef,
                     });
                 }
             } else if (isSolid(tile)) {
                 collisions.append(util.AABB{
-                    .pos = Vec2f{tilex, tiley},
+                    .pos = Vec2f{ tilex, tiley },
                     .size = tile_sizef,
                 });
             }
-
         }
     }
 
@@ -159,7 +158,7 @@ pub const CollisionInfo = struct {
     items: [9]util.AABB,
 
     pub fn init() CollisionInfo {
-        return CollisionInfo {
+        return CollisionInfo{
             .len = 0,
             .items = undefined,
         };
@@ -173,11 +172,11 @@ pub const CollisionInfo = struct {
 };
 
 pub fn isSolid(tile: u8) bool {
-    return tile >= 2;
+    return if (tile == 0) false else world.Tiles.is_solid(tile - 1);
 }
 
 pub fn isOneWay(tile: u8) bool {
-    return tile >= 34 and tile <= 36;
+    return if (tile == 0) false else world.Tiles.is_oneway(tile - 1);
 }
 
 // Debug functions
