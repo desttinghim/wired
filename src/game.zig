@@ -158,6 +158,8 @@ pub var player: Player = undefined;
 var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 pub var wires = std.BoundedArray(Wire, 10).init(0) catch unreachable;
 var camera = Vec2{ 0, 0 };
+var level: world.Level = undefined;
+var level_buf: []world.TileData = undefined;
 
 const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
 pub var coins = std.BoundedArray(Coin, 20).init(0) catch unreachable;
@@ -217,8 +219,8 @@ pub fn start() !void {
     };
     const world_reader = stream.reader();
 
-    var level = try world.Level.read(world_reader);
-    var level_buf = try alloc.alloc(world.TileData, level.size);
+    level = try world.Level.read(world_reader);
+    level_buf = try alloc.alloc(world.TileData, level.size);
     try level.readTiles(world_reader, level_buf);
 
     try extract.extractLevel(.{
@@ -607,7 +609,11 @@ fn updateCircuit() !void {
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
     }
+
+    // Simulate circuit
     _ = try circuit.fill(frame_alloc);
+
+    // Energize wires
     for (wires.slice()) |*wire| {
         const begin = wire.begin();
         const end = wire.end();
@@ -616,7 +622,15 @@ fn updateCircuit() !void {
         if ((circuit.isEnabled(cellBegin) and begin.pinned) or
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
-    // map.reset(&assets.solid);
+
+    // Add doors to map
+    var i: usize = 0;
+    while (level.getDoor(i)) |door| : (i += 1) {
+        const tile: u8 = if (door.kind == .Door) 3 else 4;
+        try map.set_cell(.{door.x, door.y}, tile);
+    }
+
+    // Remove doors that have been unlocked
     const enabledDoors = try circuit.enabledDoors(frame_alloc);
     defer frame_alloc.free(enabledDoors.items);
     for (enabledDoors.items) |door| {
