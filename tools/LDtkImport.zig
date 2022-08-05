@@ -150,8 +150,6 @@ fn make(step: *std.build.Step) !void {
             if (circuit_layer == null) return error.MissingCircuitLayer;
             if (collision_layer == null) return error.MissingCollisionLayer;
 
-            std.log.warn("Layers found", .{});
-
             const circuit = circuit_layer.?;
             const collision = collision_layer.?;
 
@@ -175,19 +173,22 @@ fn make(step: *std.build.Step) !void {
 
             const tiles = level.tiles.?;
 
-            // Add straight tile data
+            // Add unchanged tile data
             for (collision.autoLayerTiles) |autotile| {
                 const x = @divExact(autotile.px[0], collision.__gridSize);
                 const y = @divExact(autotile.px[1], collision.__gridSize);
                 const i = @intCast(usize, x + y * width);
-                tiles[i] = world.TileData{ .tile = @intCast(u7, autotile.t + 1) };
+                const sx = @divExact(autotile.src[0], collision.__gridSize);
+                const sy = @divExact(autotile.src[1], collision.__gridSize);
+                const t = sx + sy * 16 + 1;
+                tiles[i] = world.TileData{ .tile = @intCast(u7, t) };
             }
 
             // Add circuit tiles
             for (circuit.intGridCsv) |cir64, i| {
                 const cir = @intCast(u4, cir64);
                 const col = collision.intGridCsv[i];
-                if (col < 2) {
+                if (col == 0 or col == 1) {
                     tiles[i] = world.TileData{ .flags = .{
                         .solid = col == 1,
                         .circuit = cir,
