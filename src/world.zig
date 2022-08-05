@@ -26,19 +26,19 @@ pub const TileData = union(enum) {
 
     pub fn toByte(data: TileData) u8 {
         switch (data) {
-            .tile => |int| return 0b0000_0001 | (int << 1),
-            .flags => |flags| return (@intCast(u7, @boolToInt(flags.solid)) << 1) | (@intCast(u7, flags.circuit) << 2),
+            .tile => |int| return 0b1000_0000 | @intCast(u8, int),
+            .flags => |flags| return (@intCast(u7, @boolToInt(flags.solid))) | (@intCast(u7, flags.circuit) << 1),
         }
     }
 
     pub fn fromByte(byte: u8) TileData {
-        const is_tile = (0b0000_0001 & byte) > 0;
+        const is_tile = (0b1000_0000 & byte) > 0;
         if (is_tile) {
-            const tile = @intCast(u7, (0b1111_1110 & byte) >> 1);
+            const tile = @intCast(u7, (0b0111_1111 & byte));
             return TileData{ .tile = tile };
         } else {
-            const is_solid = (0b0000_0010 & byte) > 0;
-            const circuit = @intCast(u4, (0b0011_1100 & byte) >> 2);
+            const is_solid = (0b0000_0001 & byte) > 0;
+            const circuit = @intCast(u4, (0b0001_1110 & byte) >> 1);
             return TileData{ .flags = .{
                 .solid = is_solid,
                 .circuit = circuit,
