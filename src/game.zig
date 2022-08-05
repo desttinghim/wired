@@ -328,7 +328,7 @@ pub fn update(time: usize) !State {
     velocityProcess(1, &player.pos);
     physicsProcess(1, &player.pos, &player.physics);
     try manipulationProcess(&player.pos, &player.control);
-    controlProcess(1, &player.pos, &player.control, &player.physics, &player.kinematic);
+    controlProcess(time, &player.pos, &player.control, &player.physics, &player.kinematic);
     try kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
     try particles.update();
@@ -727,12 +727,18 @@ fn controlAnimProcess(_: f32, sprite: *Sprite, anim: *ControlAnim, control: *Con
 
 const approxEqAbs = std.math.approxEqAbs;
 
-fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinematic: *Kinematic) void {
+fn controlProcess(time: usize, pos: *Pos, control: *Control, physics: *Physics, kinematic: *Kinematic) void {
     var delta = Vec2f{ 0, 0 };
+    if (kinematic.pass_start) |pass_start| {
+        if (time - pass_start > 10) {
+            kinematic.pass_start = null;
+        }
+    }
     if (approxEqAbs(f32, kinematic.move[1], 0, 0.01) and kinematic.lastCol[1] > 0) {
         if (input.btnp(.one, .one)) delta[1] -= 23;
         if (input.btn(.one, .left)) delta[0] -= 1;
         if (input.btn(.one, .right)) delta[0] += 1;
+        if (input.btn(.one, .down)) kinematic.pass_start = time;
         if (delta[0] != 0 or delta[1] != 0) {
             control.state = .walk;
         } else {
@@ -759,9 +765,15 @@ fn controlProcess(_: f32, pos: *Pos, control: *Control, physics: *Physics, kinem
 }
 
 fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
+    const is_passing = kinematic.pass_start != null;
     var next = pos.last;
     next[0] = pos.pos[0];
-    var hcol = map.collide(kinematic.col.addv(next));
+    var hcol = map.collide(.{
+        .rect = kinematic.col.addv(next),
+        .last = pos.last,
+        .next = next,
+        .is_passing = is_passing,
+    });
     if (hcol.len > 0) {
         kinematic.lastCol[0] = next[0] - pos.last[0];
         next[0] = pos.last[0];
@@ -770,7 +782,12 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     }
 
     next[1] = pos.pos[1];
-    var vcol = map.collide(kinematic.col.addv(next));
+    var vcol = map.collide(.{
+        .rect = kinematic.col.addv(next),
+        .last = pos.last,
+        .next = next,
+        .is_passing = is_passing,
+    });
     if (vcol.len > 0) {
         kinematic.lastCol[1] = next[1] - pos.last[1];
         next[1] = pos.last[1];
@@ -779,7 +796,12 @@ fn kinematicProcess(_: f32, pos: *Pos, kinematic: *Kinematic) !void {
     }
 
     var colPosAbs = next + kinematic.lastCol;
-    var lastCol = map.collide(kinematic.col.addv(colPosAbs));
+    var lastCol = map.collide(.{
+        .rect = kinematic.col.addv(colPosAbs),
+        .last = pos.last,
+        .next = next,
+        .is_passing = is_passing,
+    });
     if (lastCol.len == 0) {
         kinematic.lastCol = Vec2f{ 0, 0 };
     }

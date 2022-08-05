@@ -20,6 +20,9 @@ pub const Pos = struct {
     pub fn initVel(pos: Vec2f, vel: Vec2f) @This() {
         return @This(){ .pos = pos, .last = pos - vel };
     }
+    pub fn getDirection(pos: Pos) Vec2f {
+        return pos.pos - pos.last;
+    }
 };
 pub const Control = struct {
     controller: enum { player },
@@ -39,6 +42,7 @@ pub const Kinematic = struct {
     col: AABB,
     move: Vec2f = Vec2f{ 0, 0 },
     lastCol: Vec2f = Vec2f{ 0, 0 },
+    pass_start: ?usize = null,
 
     pub fn inAir(this: @This()) bool {
         return approxEqAbs(f32, this.lastCol[1], 0, 0.01);

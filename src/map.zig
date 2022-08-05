@@ -107,6 +107,55 @@ fn getTile(this: @This(), x: i32, y: i32) ?u8 {
     return this.tiles[@intCast(u32, i)];
 }
 
+pub const BodyInfo = struct {
+    /// Rectangle
+    rect: util.AABB,
+    /// Last position
+    last: Vec2f,
+    /// Next position
+    next: Vec2f,
+    /// Pass through one way platforms
+    is_passing: bool = false,
+};
+
+pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
+    const top_left = body.rect.pos / tile_sizef;
+    const bot_right = (body.rect.pos + body.rect.size) / tile_sizef;
+    var collisions = CollisionInfo.init();
+
+    var i: isize = @floatToInt(i32, top_left[0]);
+    while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
+        var a: isize = @floatToInt(i32, top_left[1]);
+        while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
+
+            const tile = this.getTile(i, a) orelse continue;
+            const tilex = @intToFloat(f32, i * tile_width);
+            const tiley = @intToFloat(f32, a * tile_height);
+            const bottom = @floatToInt(i32, bot_right[1]);
+
+            if (isOneWay(tile)) {
+                // const last = @floatToInt(i32, body.last[1]);
+                // const next = @floatToInt(i32, body.next[1]);
+                // w4.tracef("%d, %d, %d", last, next, a * tile_height);
+                if (!body.is_passing and a == bottom and body.last[1] <= body.next[1]) {
+                    collisions.append(util.AABB{
+                        .pos = Vec2f{tilex, tiley},
+                        .size = tile_sizef,
+                    });
+                }
+            } else if (isSolid(tile)) {
+                collisions.append(util.AABB{
+                    .pos = Vec2f{tilex, tiley},
+                    .size = tile_sizef,
+                });
+            }
+
+        }
+    }
+
+    return collisions;
+}
+
 pub const CollisionInfo = struct {
     len: usize,
     items: [9]util.AABB,
@@ -125,35 +174,12 @@ pub const CollisionInfo = struct {
     }
 };
 
-pub fn collide(this: @This(), rect: util.AABB) CollisionInfo {
-    const top_left = rect.pos / tile_sizef;
-    const bot_right = (rect.pos + rect.size) / tile_sizef;
-    var collisions = CollisionInfo.init();
-
-    var i: isize = @floatToInt(i32, top_left[0]);
-    while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
-        var a: isize = @floatToInt(i32, top_left[1]);
-        while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
-            if (this.isSolid(Cell{ i, a })) {
-                collisions.append(util.AABB{
-                    .pos = Vec2f{
-                        @intToFloat(f32, i * tile_width),
-                        @intToFloat(f32, a * tile_height),
-                    },
-                    .size = tile_sizef,
-                });
-            }
-        }
-    }
-
-    return collisions;
+pub fn isSolid(tile: u8) bool {
+    return tile >= 2;
 }
 
-pub fn isSolid(this: @This(), cell: Cell) bool {
-    if (this.get_cell(cell)) |tile| {
-        return tile != 0 and tile != 1;
-    }
-    return true;
+pub fn isOneWay(tile: u8) bool {
+    return tile >= 34 and tile <= 36;
 }
 
 // Debug functions
