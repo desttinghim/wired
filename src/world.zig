@@ -17,6 +17,80 @@ pub const CircuitType = enum(u4) {
     Source = 9,
 };
 
+/// This lists the most important tiles so I don't have to keep rewriting things
+pub const Tiles = struct {
+    // Switches
+    pub const SwitchTeeWestOff = 24;
+    pub const SwitchTeeWestOn = 25;
+    pub const SwitchTeeEastOff = 26;
+    pub const SwitchTeeEastOn = 27;
+    pub const SwitchVerticalOff = 28;
+    pub const SwitchVerticalOn = 29;
+    pub const SwitchHorizontalOff = 30;
+    pub const SwitchHorizontalOn = 31;
+
+    pub fn is_switch(tile: u8) bool {
+        return tile >= 24 and tile <= 31;
+    }
+
+    // Plugs, sorted by autotile order
+    pub const PlugNorth = 16;
+    pub const PlugWest = 17;
+    pub const PlugEast = 18;
+    pub const PlugSouth = 19;
+
+    pub fn is_plug(tile: u8) bool {
+        return tile >= 16 and tile < 20;
+    }
+
+    pub const LogicAnd = 21;
+    pub const LogicNot = 22;
+    pub const LogicXor = 23;
+
+    pub fn is_logic(tile: u8) bool {
+        return tile >= 21 and tile <= 24;
+    }
+
+    pub const ConduitCross = 97;
+    pub const ConduitSingle = 113;
+
+    pub fn is_conduit(tile: u8) bool {
+        return tile >= ConduitCross and tile <= ConduitSingle;
+    }
+
+    pub fn is_circuit(tile: u8) bool {
+        return is_plug(tile) or is_conduit(tile) or is_switch(tile) or is_logic(tile);
+    }
+
+    pub const WallSingle = 113;
+    pub const WallSurrounded = 127;
+
+    pub fn is_wall(tile: u8) bool {
+        return tile >= WallSingle and tile <= WallSurrounded;
+    }
+
+    pub const Door = 3;
+    pub const Trapdoor = 4;
+
+    pub fn is_door(tile: u8) bool {
+        return tile == 3 or tile == 4;
+    }
+
+    pub fn is_solid(tile: u8) bool {
+        return is_wall(tile) or is_door(tile);
+    }
+
+    pub const OneWayLeft = 33;
+    pub const OneWayMiddle = 34;
+    pub const OneWayRight = 35;
+
+    pub fn is_oneway(tile: u8) bool {
+        return tile >= OneWayLeft and tile <= OneWayRight;
+    }
+
+    pub const Empty = 0;
+};
+
 pub const TileData = union(enum) {
     tile: u7,
     flags: struct {

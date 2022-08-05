@@ -477,7 +477,7 @@ const Interaction = struct {
 fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
     const cell = util.world2cell(pos);
     if (circuit.get_cell(cell)) |tile| {
-        if (Circuit.is_switch(tile)) {
+        if (world.Tiles.is_switch(tile)) {
             return Interaction{ .details = .lever, .pos = cell * Map.tile_size + Vec2{ 4, 4 } };
         }
     }
@@ -487,7 +487,7 @@ fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
 fn getNearestPlugInteraction(pos: Vec2f, wireID: usize, which: usize) ?Interaction {
     const cell = util.world2cell(pos);
     if (circuit.get_cell(cell)) |tile| {
-        if (Circuit.is_plug(tile)) {
+        if (world.Tiles.is_plug(tile)) {
             const active = circuit.isEnabled(cell);
             return Interaction{
                 .details = .{ .plug = .{ .wireID = wireID, .which = which } },
@@ -626,7 +626,7 @@ fn updateCircuit() !void {
     // Add doors to map
     var i: usize = 0;
     while (level.getDoor(i)) |door| : (i += 1) {
-        const tile: u8 = if (door.kind == .Door) 3 else 4;
+        const tile: u8 = if (door.kind == .Door) world.Tiles.Door else world.Tiles.Trapdoor;
         try map.set_cell(.{door.x, door.y}, tile);
     }
 
@@ -634,7 +634,7 @@ fn updateCircuit() !void {
     const enabledDoors = try circuit.enabledDoors(frame_alloc);
     defer frame_alloc.free(enabledDoors.items);
     for (enabledDoors.items) |door| {
-        try map.set_cell(door, 0);
+        try map.set_cell(door, world.Tiles.Empty);
     }
 }
 

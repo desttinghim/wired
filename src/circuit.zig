@@ -1,44 +1,26 @@
 const std = @import("std");
 const util = @import("util.zig");
 const assets = @import("assets");
+const world = @import("world.zig");
+const T = world.Tiles;
 
 const Vec2 = util.Vec2;
 const Cell = util.Cell;
 
-pub fn is_circuit(tile: u8) bool {
-    return is_plug(tile) or is_conduit(tile) or is_switch(tile) or is_logic(tile);
-}
-
-pub fn is_plug(tile: u8) bool {
-    return tile >= 17 and tile <= 20;
-}
-
-pub fn is_conduit(tile: u8) bool {
-    return tile >= 97 and tile <= 113;
-}
-
-pub fn is_switch(tile: u8) bool {
-    return tile >= 24 and tile <= 31;
-}
-
-pub fn is_logic(tile: u8) bool {
-    return tile >= 21 and tile <= 24;
-}
-
 pub fn toggle_switch(tile: u8) u8 {
     return switch (tile) {
         // Tee west
-        24 => 25,
-        25 => 24,
+        T.SwitchTeeWestOff => T.SwitchTeeWestOn,
+        T.SwitchTeeWestOn => T.SwitchTeeWestOff,
         // Tee east
-        26 => 27,
-        27 => 26,
+        T.SwitchTeeEastOff => T.SwitchTeeEastOn,
+        T.SwitchTeeEastOn => T.SwitchTeeEastOff,
         // Vertical
-        28 => 29,
-        29 => 28,
+        T.SwitchVerticalOn => T.SwitchVerticalOff,
+        T.SwitchVerticalOff => T.SwitchVerticalOn,
         // Horizontal
-        30 => 31,
-        31 => 30,
+        T.SwitchHorizontalOn => T.SwitchHorizontalOff,
+        T.SwitchHorizontalOff => T.SwitchHorizontalOn,
         // Not a switch, pass tile through
         else => tile,
     };
@@ -75,25 +57,23 @@ const Current = [4]bool;
 fn get_inputs(tile: u8) Current {
     return switch (tile) {
         // Conduit recieves from every side
-        16...20,
-        43...47,
-        97...113,
+        T.PlugNorth...T.PlugSouth,
+        T.ConduitCross...T.ConduitSingle,
         => .{ true, true, true, true },
         // Switch_On
-        25,
-        27,
-        29,
+        T.SwitchTeeWestOn,
+        T.SwitchTeeEastOn,
+        T.SwitchVerticalOn,
         => .{ true, false, true, false },
         // Switch_Off
-        26,
-        28,
-        => .{ false, false, true, true },
+        T.SwitchTeeWestOff => .{ false, false, true, true },
+        T.SwitchTeeEastOff => .{ false, true, true, false },
         // And, Xor
-        21,
-        23,
+        T.LogicAnd,
+        T.LogicXor,
         => .{ false, true, false, true },
         // Not
-        22 => .{ false, false, true, false },
+        T.LogicNot => .{ false, false, true, false },
         else => .{ false, false, false, false },
     };
 }
@@ -101,20 +81,19 @@ fn get_inputs(tile: u8) Current {
 fn get_outputs(tile: u8) Current {
     return switch (tile) {
         // Conduit goes out every side
-        16...20,
-        43...47,
-        97...113,
+        T.PlugNorth...T.PlugSouth,
+        T.ConduitCross...T.ConduitSingle,
         => .{ true, true, true, true },
         // Switches
         // Tee west
-        25 => .{ false, false, true, true },
-        26 => .{ true, false, true, false },
+        T.SwitchTeeWestOn => .{ false, false, true, true },
+        T.SwitchTeeWestOff => .{ true, false, true, false },
         // Tee east
-        27 => .{ false, true, true, false },
-        28 => .{ true, false, true, false },
+        T.SwitchTeeEastOn => .{ false, true, true, false },
+        T.SwitchTeeEastOff => .{ true, false, true, false },
         // Vertical
-        29 => .{ false, false, true, false },
-        30 => .{ true, false, true, false },
+        T.SwitchVerticalOn => .{ true, false, true, false },
+        T.SwitchVerticalOff => .{ false, false, true, false },
         else => .{ false, false, false, false },
     };
 }
@@ -123,9 +102,9 @@ const Logic = union(enum) { Not, And, Xor };
 
 fn get_logic(tile: u8) ?Logic {
     return switch (tile) {
-        21 => .And,
-        22 => .Not,
-        23 => .Xor,
+        T.LogicAnd => .And,
+        T.LogicNot => .Not,
+        T.LogicXor => .Xor,
         else => null,
     };
 }
@@ -134,10 +113,10 @@ const Plugs = [4]bool;
 /// Returns sides where wires may be plugged
 fn get_plugs(tile: u8) Plugs {
     return switch (tile) {
-        17 => .{ false, false, true, false },
-        18 => .{ false, true, false, false },
-        19 => .{ false, false, false, true },
-        20 => .{ true, false, false, false },
+        world.Tiles.PlugNorth => .{ false, false, true, false },
+        world.Tiles.PlugWest => .{ false, true, false, false },
+        world.Tiles.PlugEast => .{ false, false, false, true },
+        world.Tiles.PlugSouth => .{ true, false, false, false },
         else => .{ false, false, false, false },
     };
 }
@@ -254,7 +233,7 @@ pub fn isEnabled(this: @This(), cell: Cell) bool {
 pub fn toggle(this: *@This(), c: Cell) void {
     const cell = c;
     if (this.get_cell(cell)) |tile| {
-        if (is_switch(tile)) {
+        if (T.is_switch(tile)) {
             const toggled = toggle_switch(tile);
             this.set_cell(cell, toggled);
         }
@@ -304,7 +283,7 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
         const index = this.indexOf(cell) orelse continue;
         this.enable(cell);
         const hasVisited = std.mem.containsAtLeast(usize, visited.items, 1, &.{index});
-        if (hasVisited and !is_logic(tile)) continue;
+        if (hasVisited and !T.is_logic(tile)) continue;
         visited.append(index);
         count += 1;
         if (get_logic(tile)) |logic| {
@@ -334,7 +313,7 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
             if (get_inputs(nextTile)[@enumToInt(s.opposite())])
                 try q.insert(nextCell);
         }
-        if (is_plug(tile)) {
+        if (T.is_plug(tile)) {
             for (this.bridges.items) |*b| {
                 if (@reduce(.And, b.cells[0] == cell)) {
                     try q.insert(b.cells[1]);
