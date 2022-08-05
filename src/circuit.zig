@@ -235,9 +235,12 @@ pub fn enabledBridges(this: @This(), alloc: std.mem.Allocator) !util.Buffer(usiz
 }
 
 pub fn enabledDoors(this: @This(), alloc: std.mem.Allocator) !util.Buffer(Cell) {
-    var items = try alloc.alloc(Cell, this.doors.len);
+    var items = try alloc.alloc(Cell, this.doors.items.len);
     var buffer = util.Buffer(Cell).init(items);
     for (this.doors.items) |d| {
+        const x = d.cell[0];
+        const y = d.cell[1];
+        w4.tracef("%d, %d", x, y);
         if (d.enabled) buffer.append(d.cell);
     }
     return buffer;

@@ -617,10 +617,11 @@ fn updateCircuit() !void {
             (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
     }
     // map.reset(&assets.solid);
-    // const enabledDoors = try circuit.enabledDoors(frame_alloc);
-    // for (enabledDoors.items) |door| {
-    //     try map.set_cell(door, 0);
-    // }
+    const enabledDoors = try circuit.enabledDoors(frame_alloc);
+    defer frame_alloc.free(enabledDoors.items);
+    for (enabledDoors.items) |door| {
+        try map.set_cell(door, 0);
+    }
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {

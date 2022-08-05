@@ -107,24 +107,33 @@ test "Queue" {
 
 pub fn Buffer(comptime T: type) type {
     return struct {
-        len: usize,
+        len: usize = 0,
+        backing_buffer: []T,
         items: []T,
 
-        pub fn init(slice: []T) @This() {
-            return @This(){
-                .len = 0,
-                .items = slice,
+        pub fn init(backing_buffer: []T) @This() {
+            var this = @This(){
+                .items = backing_buffer,
+                .backing_buffer = backing_buffer,
             };
+            this.set_len(0);
+            return this;
+        }
+
+        fn set_len(this: *@This(), len: usize) void {
+            this.len = len;
+            this.items.len = len;
         }
 
         pub fn reset(buf: *@This()) void {
             buf.len = 0;
+            buf.items.len = 0;
         }
 
         pub fn append(buf: *@This(), item: T) void {
-            std.debug.assert(buf.len < buf.items.len);
-            buf.items[buf.len] = item;
-            buf.len += 1;
+            std.debug.assert(buf.len < buf.backing_buffer.len);
+            buf.backing_buffer[buf.len] = item;
+            buf.set_len(buf.len + 1);
         }
     };
 }
