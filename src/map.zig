@@ -132,12 +132,10 @@ pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
             const tilex = @intToFloat(f32, i * tile_width);
             const tiley = @intToFloat(f32, a * tile_height);
             const bottom = @floatToInt(i32, bot_right[1]);
+            const foot = body.rect.pos[1] + body.rect.size[1];
 
             if (isOneWay(tile)) {
-                // const last = @floatToInt(i32, body.last[1]);
-                // const next = @floatToInt(i32, body.next[1]);
-                // w4.tracef("%d, %d, %d", last, next, a * tile_height);
-                if (!body.is_passing and a == bottom and body.last[1] <= body.next[1]) {
+                if (!body.is_passing and a == bottom and body.last[1] <= body.next[1] and foot < tiley + 2) {
                     collisions.append(util.AABB{
                         .pos = Vec2f{tilex, tiley},
                         .size = tile_sizef,
