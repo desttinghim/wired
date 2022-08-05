@@ -132,6 +132,8 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
+            if (circuit_map[i] == .Source) circuit.addSource(.{@intCast(i32, x), @intCast(i32, y)});
+
             if (circuit_map[i] == .None) {
                 autotiles[i] = null;
                 continue;
@@ -186,8 +188,8 @@ pub fn extractLevel(opt: Options) !void {
                 .Switch_On => opt.switch_on.find(autotile),
                 .Switch_Off => opt.switch_off.find(autotile),
                 .Plug => opt.plug.find(autotile),
-                .And => 60,
-                .Xor => 62,
+                .And => 21,
+                .Xor => 23,
                 else => 0,
             };
             circuit.map[i] = tile;

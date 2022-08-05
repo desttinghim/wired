@@ -95,37 +95,39 @@ fn make(step: *std.build.Step) !void {
                                 };
                                 try entity_array.append(world_entity);
                             } else {
+                                const p1_x: i16 = @intCast(i16, entity.__grid[0]);
+                                const p1_y: i16 = @intCast(i16, entity.__grid[1]);
+                                var anchor1 = false;
+                                var anchor2 = false;
+                                var p2_x: i16 = p1_x;
+                                var p2_y: i16 = p1_y;
+                                for (entity.fieldInstances) |field| {
+                                    if (std.mem.eql(u8, field.__identifier, "Anchor")) {
+                                        const anchors = field.__value.Array.items;
+                                        anchor1 = anchors[0].Bool;
+                                        anchor2 = anchors[1].Bool;
+                                    } else if (std.mem.eql(u8, field.__identifier, "Point")) {
+                                        const end = field.__value.Array.items.len - 1;
+                                        const endpoint = field.__value.Array.items[end];
+                                        const x = endpoint.Object.get("cx").?;
+                                        const y = endpoint.Object.get("cy").?;
+                                        p2_x = @intCast(i16, x.Integer);
+                                        p2_y = @intCast(i16, y.Integer);
+                                    }
+                                }
                                 const wire_begin = world.Entity{
-                                    .kind = .WireNode,
-                                    .x = @intCast(i16, entity.__grid[0]),
-                                    .y = @intCast(i16, entity.__grid[1]),
+                                    .kind = if (anchor1) .WireAnchor else .WireNode,
+                                    .x = p1_x,
+                                    .y = p1_y,
                                 };
                                 try entity_array.append(wire_begin);
 
-                                for (entity.fieldInstances) |field| {
-                                    if (std.mem.eql(u8, field.__identifier, "Point")) {
-                                        const end = field.__value.Array.items.len - 1;
-                                        const endpoint = field.__value.Array.items[end];
-                                        // const jstr = switch (endpoint) {
-                                        //     .Array => "Array",
-                                        //     .Object => "Object",
-                                        //     .Integer => "Integer",
-                                        //     else => "Other",
-                                        // };
-                                        // std.log.warn("{s}", .{jstr});
-                                        // std.log.warn("{}", .{endpoint.Integer});
-                                        // endpoint.dump();
-                                        const x = endpoint.Object.get("cx").?;
-                                        const y = endpoint.Object.get("cy").?;
-                                        const wire_end = world.Entity{
-                                            .kind = .WireEndNode,
-                                            .x = @intCast(i16, x.Integer),
-                                            .y = @intCast(i16, y.Integer),
-                                        };
-                                        try entity_array.append(wire_end);
-                                        break;
-                                    }
-                                }
+                                const wire_end = world.Entity{
+                                    .kind = if (anchor2) .WireEndAnchor else .WireEndNode,
+                                    .x = p2_x,
+                                    .y = p2_y,
+                                };
+                                try entity_array.append(wire_end);
                             }
                         }
                     }

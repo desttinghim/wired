@@ -268,16 +268,19 @@ pub fn start() !void {
         _ = try wires.resize(0);
         var a: usize = 0;
         while (level.getWire(a)) |wire| : (a += 1) {
+            const p1 = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size + Vec2{ 4, 4 });
+            const p2 = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size + Vec2{ 4, 4 });
+
             var w = try wires.addOne();
             _ = try w.nodes.resize(0);
             // const divisions = wire.divisions;
             const divisions = 10;
             var i: usize = 0;
             while (i <= divisions) : (i += 1) {
-                try w.nodes.append(Pos.init(Vec2f{ 0, 0 }));
+                try w.nodes.append(Pos.init(p1));
             }
-            w.begin().pos = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size);
-            w.end().pos = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size);
+            w.begin().pos = p1;
+            w.end().pos = p2;
 
             w.begin().pinned = wire[0].kind == world.EntityKind.WireAnchor;
             w.end().pinned = wire[1].kind == world.EntityKind.WireEndAnchor;
