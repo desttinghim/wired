@@ -388,3 +388,40 @@ pub const Entity = struct {
         };
     }
 };
+
+pub const World = struct {
+    /// All levels in the game. If two rooms are next to each other, they
+    /// are assumed to be neighbors. Leaving the screen will load in the next
+    /// level in that direction. The player is placed at the same position
+    /// vertically, but on the opposite side of the screen horizontally. Vice versa
+    /// for vertically moving between screens. The player will retain their momentum.
+    ///
+    /// When a wire crosses a screen boundary, it will coil up at the player's feet
+    /// automatically. If one side of the wire is pinned, the wire will be let go of.
+    ///
+    /// Alternatively, the wire will be pinned outside of the level. If it isn't pinned,
+    /// I will need to freeze it and move it in a snake like fashion. Or just leave the
+    /// other level loaded.
+    levels: []Level,
+    /// List of all circuit joins between levels. Levels can have multiple joins
+    circuit_nodes: []CircuitNode,
+};
+
+pub const CircuitNode = struct {
+    energized: bool,
+    kind: CircuitKind,
+    inputs: []usize,
+};
+
+pub const CircuitKind = enum {
+    /// This join is conditional on logic state inside of the level
+    Logic,
+    /// This join is a source of power
+    Source,
+    /// This node has no logic and provides no power
+    Conduit,
+    // TODO: This type of node would be a wire stretching
+    // between multiple levels. This doesn't work with the rules
+    // for moving wires between levels at the moment.
+    // Bridge,
+};
