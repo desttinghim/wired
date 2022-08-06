@@ -389,6 +389,16 @@ pub const Entity = struct {
     }
 };
 
+// Data format:
+// | node count | level count |
+// | node headers...          |
+// | level headers...         |
+// | node data...             |
+// | level data...            |
+
+const LevelHeader = struct { x: u8, y: u8, offset: u16 };
+
+
 pub const World = struct {
     /// All levels in the game. If two rooms are next to each other, they
     /// are assumed to be neighbors. Leaving the screen will load in the next
@@ -403,25 +413,37 @@ pub const World = struct {
     /// I will need to freeze it and move it in a snake like fashion. Or just leave the
     /// other level loaded.
     levels: []Level,
-    /// List of all circuit joins between levels. Levels can have multiple joins
-    circuit_nodes: []CircuitNode,
+    /// An abstract representation of all circuits in game.
+    abstract_circuit: []CircuitNode,
+
+    // pub fn write(world: Entity, writer: anytype) !void {
+    //     try writer.writeInt(u16, circuit_nodes.len, .Little);
+    //     try writer.writeInt(u16, levels.len, .Little);
+    //     for (circuit_nodes) |node| {
+    //         try node.write_header(writer);
+    //     }
+    // }
 };
+
+const NodeID = u16;
 
 pub const CircuitNode = struct {
     energized: bool,
-    kind: CircuitKind,
+    kind: NodeKind,
     inputs: []usize,
+
+    // pub fn write_header(node: CircuitNode, writer: anytype) !void {
+    //     try writer.writeInt(u16, )
+    // }
 };
 
-pub const CircuitKind = enum {
-    /// This join is conditional on logic state inside of the level
-    Logic,
-    /// This join is a source of power
+pub const NodeKind = union(enum) {
+    /// An And logic gate,
+    And: [2]NodeID,
+    /// This node is a source of power
     Source,
-    /// This node has no logic and provides no power
-    Conduit,
-    // TODO: This type of node would be a wire stretching
-    // between multiple levels. This doesn't work with the rules
-    // for moving wires between levels at the moment.
-    // Bridge,
+    /// This node has no logic but can pass it on from another source
+    Conduit: NodeID,
+    /// This node represents a physical plug in the game world
+    Plug: NodeID,
 };
