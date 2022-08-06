@@ -44,6 +44,7 @@ export fn update() void {
                 error.EndOfStream => showErr(@errorName(e)),
                 error.OutOfMemory => showErr(@errorName(e)),
                 error.NullTiles => showErr(@errorName(e)),
+                error.NoPlayerSpawn => showErr(@errorName(e)),
             },
         }
     }

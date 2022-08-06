@@ -95,7 +95,6 @@ fn make(step: *std.build.Step) !void {
             .y = level.world_y,
             .offset = offset,
         });
-        std.log.warn("[{}] x={} y={}; {} + {} = {}", .{ i, level.world_x, level.world_y, last_offset, last_size, offset });
     }
 
     // Create array to write data to
@@ -107,43 +106,7 @@ fn make(step: *std.build.Step) !void {
 
     // Write levels
     for (levels.items) |level| {
-        std.log.warn("{} + {} + {} + {} + {} + {} + {}", .{
-            @sizeOf(i8),
-            @sizeOf(i8),
-            @sizeOf(u16),
-            @sizeOf(u16),
-            @sizeOf(u16),
-            level.tiles.?.len,
-            level.entities.?.len * world.Entity.calculateSize(),
-        });
-
-        std.log.warn("x={} y={} w={} s={} ec={} t={} e={}", .{
-            level.world_x,
-            level.world_y,
-            level.width,
-            level.size,
-            level.entity_count,
-            level.tiles.?.len,
-            level.entities.?.len,
-        });
         try level.write(writer);
-    }
-
-    {
-        var stream = std.io.FixedBufferStream([]const u8){
-            .pos = 0,
-            .buffer = data.items,
-        };
-        const world_reader = stream.reader();
-        var lvls = try world.read(allocator, world_reader);
-        var level_data_offset = try stream.getPos();
-        std.log.warn("level_data_offset {}", .{level_data_offset});
-
-        try stream.seekTo(level_data_offset + lvls[1].offset);
-        std.log.warn("seek to 1 {}", .{try stream.getPos()});
-
-        var level = try world.Level.read(world_reader);
-        std.log.warn("level x={}, y={}", .{ level.world_x, level.world_y });
     }
 
     // Open output file and write data into it
