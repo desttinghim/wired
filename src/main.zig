@@ -30,8 +30,10 @@ export fn update() void {
         .Game => game.update(time) catch |e| switch (e) {
             error.Overflow => showErr(@errorName(e)),
             error.OutOfBounds => showErr(@errorName(e)),
-            // error.EndOfStream => showErr(@errorName(e)),
+            error.EndOfStream => showErr(@errorName(e)),
             error.OutOfMemory => showErr(@errorName(e)),
+            error.InvalidLevel => showErr(@errorName(e)),
+                error.NullTiles => showErr(@errorName(e)),
         },
     };
     if (state != newState) {
@@ -45,6 +47,7 @@ export fn update() void {
                 error.OutOfMemory => showErr(@errorName(e)),
                 error.NullTiles => showErr(@errorName(e)),
                 error.NoPlayerSpawn => showErr(@errorName(e)),
+                error.InvalidLevel => showErr(@errorName(e)),
             },
         }
     }

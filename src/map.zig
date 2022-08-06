@@ -29,6 +29,10 @@ pub fn init(map: []u8, map_size: Vec2) @This() {
     return this;
 }
 
+pub fn clear(this: *@This()) void {
+    std.mem.set(u8, this.tiles, 0);
+}
+
 pub fn reset(this: *@This(), initialState: []const u8) void {
     std.debug.assert(initialState.len == this.tiles.len);
     std.mem.copy(u8, this.tiles, initialState);

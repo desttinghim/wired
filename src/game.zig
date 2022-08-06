@@ -148,6 +148,10 @@ var frame_fba_buf: [8192]u8 = undefined;
 var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
 var frame_alloc = frame_fba.allocator();
 
+var db_fba_buf: [1024]u8 = undefined;
+var db_fba = std.heap.FixedBufferAllocator.init(&db_fba_buf);
+var db_alloc = db_fba.allocator();
+
 // Global vars
 var map: Map = undefined;
 var circuit: Circuit = undefined;
@@ -158,8 +162,9 @@ pub var player: Player = undefined;
 var music = Music.Procedural.init(.C3, &Music.Minor, 83);
 pub var wires = std.BoundedArray(Wire, 10).init(0) catch unreachable;
 var camera = Vec2{ 0, 0 };
+
+var db: world.Database = undefined;
 var level: world.Level = undefined;
-var level_buf: []world.TileData = undefined;
 
 const Coin = struct { pos: Pos, sprite: Sprite, anim: Anim, area: AABB };
 pub var coins = std.BoundedArray(Coin, 20).init(0) catch unreachable;
@@ -196,6 +201,37 @@ const playerAnim = pac: {
     break :pac animArr.slice();
 };
 
+fn loadLevel(lvl: usize) !void {
+    fba.reset();
+    map.clear();
+    circuit.clearMap();
+    level = try db.levelLoad(alloc, lvl);
+
+    try extract.extractLevel(.{
+        .alloc = frame_alloc,
+        .level = level,
+        .map = &map,
+        .circuit = &circuit,
+        .tileset = world.Tiles.Walls,
+        .conduit = world.Tiles.Conduit,
+        .plug = world.Tiles.Plugs,
+        .switch_off = world.Tiles.SwitchesOff,
+        .switch_on = world.Tiles.SwitchesOn,
+    });
+}
+
+fn moveLevel(direction: enum { L, R, U, D }, lvl: usize) !void {
+    try loadLevel(lvl);
+    // var momentum = player.pos.pos - player.pos.last;
+    switch (direction) {
+        .L => player.pos.pos[0] = 156,
+        .R => player.pos.pos[0] = 4,
+        .U => player.pos.pos[1] = 156,
+        .D => player.pos.pos[1] = 4,
+    }
+    player.pos.last = player.pos.pos;
+}
+
 pub fn start() !void {
     particles = try ParticleSystem.init();
 
@@ -213,21 +249,9 @@ pub fn start() !void {
 
     map = Map.init(&map_buf, level_size);
 
-    var db = try world.Database.init(alloc);
+    db = try world.Database.init(db_alloc);
 
-    level = try db.levelLoad(alloc, 0);
-
-    try extract.extractLevel(.{
-        .alloc = frame_alloc,
-        .level = level,
-        .map = &map,
-        .circuit = &circuit,
-        .tileset = world.Tiles.Walls,
-        .conduit = world.Tiles.Conduit,
-        .plug = world.Tiles.Plugs,
-        .switch_off = world.Tiles.SwitchesOff,
-        .switch_on = world.Tiles.SwitchesOn,
-    });
+    try loadLevel(0);
 
     const spawnArr = level.getSpawn() orelse return error.NoPlayerSpawn;
     const spawn = Vec2{ spawnArr[0], spawnArr[1] };
@@ -317,6 +341,7 @@ pub fn update(time: usize) !State {
     physicsProcess(1, &player.pos, &player.physics);
     try manipulationProcess(&player.pos, &player.control);
     controlProcess(time, &player.pos, &player.control, &player.physics, &player.kinematic);
+    if (player.pos.pos[0] > 160 - 4) try moveLevel(.R, 1);
     try kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
     try particles.update();

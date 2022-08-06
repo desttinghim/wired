@@ -240,6 +240,15 @@ pub fn toggle(this: *@This(), c: Cell) void {
     }
 }
 
+pub fn clearMap(this: *@This()) void {
+    this.clear();
+    std.mem.set(u8, this.map, 0);
+    for (this.doors.items) |*door| {
+        door.enabled = false;
+    }
+    this.bridges.reset();
+}
+
 pub fn clear(this: *@This()) void {
     std.mem.set(u8, this.levels, 0);
     for (this.doors.items) |*door| {

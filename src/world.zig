@@ -484,6 +484,7 @@ pub const Database = struct {
     }
 
     pub fn levelInfo(db: *Database, level: usize) !Level {
+        if (level > db.level_info.len) return error.InvalidLevel;
         try db.cursor.seekTo(db.level_data_begin + db.level_info[level].offset);
         const reader = db.cursor.reader();
 
