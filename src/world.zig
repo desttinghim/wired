@@ -76,7 +76,7 @@ pub const Tiles = struct {
     pub const Trapdoor = 3;
 
     pub fn is_door(tile: u8) bool {
-        return tile == 3 or tile == 4;
+        return tile == Door or tile == Trapdoor;
     }
 
     pub fn is_solid(tile: u8) bool {
