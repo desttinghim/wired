@@ -243,10 +243,9 @@ pub fn toggle(this: *@This(), c: Cell) void {
 pub fn clearMap(this: *@This()) void {
     this.clear();
     std.mem.set(u8, this.map, 0);
-    for (this.doors.items) |*door| {
-        door.enabled = false;
-    }
+    this.doors.reset();
     this.bridges.reset();
+    this.sources.reset();
 }
 
 pub fn clear(this: *@This()) void {

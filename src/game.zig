@@ -218,6 +218,57 @@ fn loadLevel(lvl: usize) !void {
         .switch_off = world.Tiles.SwitchesOff,
         .switch_on = world.Tiles.SwitchesOn,
     });
+
+    const tile_size = Vec2{ 8, 8 };
+
+    {
+        _ = try wires.resize(0);
+        var a: usize = 0;
+        while (level.getWire(a)) |wire| : (a += 1) {
+            const p1 = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size + Vec2{ 4, 4 });
+            const p2 = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size + Vec2{ 4, 4 });
+
+            var w = try wires.addOne();
+            _ = try w.nodes.resize(0);
+            // const divisions = wire.divisions;
+            const divisions = 10;
+            var i: usize = 0;
+            while (i <= divisions) : (i += 1) {
+                try w.nodes.append(Pos.init(p1));
+            }
+            w.begin().pos = p1;
+            w.end().pos = p2;
+
+            w.begin().pinned = wire[0].kind == world.EntityKind.WireAnchor;
+            w.end().pinned = wire[1].kind == world.EntityKind.WireEndAnchor;
+
+            w.straighten();
+        }
+    }
+
+    {
+        var i: usize = 0;
+        while (level.getDoor(i)) |door| : (i += 1) {
+            try circuit.addDoor(Vec2{ door.x, door.y });
+        }
+    }
+
+
+    try coins.resize(0);
+    // if (!try Disk.load()) {
+    var i: usize = 0;
+    while (level.getCoin(i)) |coin| : (i += 1) {
+        try coins.append(.{
+            .pos = Pos.init(util.vec2ToVec2f(Vec2{ coin.x, coin.y } * tile_size)),
+            .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
+            .anim = Anim{ .anim = &anim_store.coin },
+            .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
+        });
+    }
+    // }
+
+    try updateCircuit();
+
 }
 
 fn moveLevel(direction: enum { L, R, U, D }) !void {
@@ -300,53 +351,6 @@ pub fn start() !void {
         },
         .kinematic = .{ .col = .{ .pos = .{ -3, -6 }, .size = .{ 5, 5 } } },
     };
-
-    {
-        _ = try wires.resize(0);
-        var a: usize = 0;
-        while (level.getWire(a)) |wire| : (a += 1) {
-            const p1 = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size + Vec2{ 4, 4 });
-            const p2 = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size + Vec2{ 4, 4 });
-
-            var w = try wires.addOne();
-            _ = try w.nodes.resize(0);
-            // const divisions = wire.divisions;
-            const divisions = 10;
-            var i: usize = 0;
-            while (i <= divisions) : (i += 1) {
-                try w.nodes.append(Pos.init(p1));
-            }
-            w.begin().pos = p1;
-            w.end().pos = p2;
-
-            w.begin().pinned = wire[0].kind == world.EntityKind.WireAnchor;
-            w.end().pinned = wire[1].kind == world.EntityKind.WireEndAnchor;
-
-            w.straighten();
-        }
-    }
-
-    {
-        var i: usize = 0;
-        while (level.getDoor(i)) |door| : (i += 1) {
-            try circuit.addDoor(Vec2{ door.x, door.y });
-        }
-    }
-
-    try coins.resize(0);
-    // if (!try Disk.load()) {
-    var i: usize = 0;
-    while (level.getCoin(i)) |coin| : (i += 1) {
-        try coins.append(.{
-            .pos = Pos.init(util.vec2ToVec2f(Vec2{ coin.x, coin.y } * tile_size)),
-            .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
-            .anim = Anim{ .anim = &anim_store.coin },
-            .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
-        });
-    }
-    // }
-
-    try updateCircuit();
 }
 
 var indicator: ?Interaction = null;
