@@ -504,6 +504,15 @@ pub const Database = struct {
 
         return level_info;
     }
+
+    pub fn findLevel(db: *Database, x: i8, y: i8) ?usize {
+        for (db.level_info) |level, i| {
+            if (level.x == x and level.y == y) {
+                return i;
+            }
+        }
+        return null;
+    }
 };
 
 // All levels in the game. If two rooms are next to each other, they

@@ -220,16 +220,44 @@ fn loadLevel(lvl: usize) !void {
     });
 }
 
-fn moveLevel(direction: enum { L, R, U, D }, lvl: usize) !void {
-    try loadLevel(lvl);
-    // var momentum = player.pos.pos - player.pos.last;
+fn moveLevel(direction: enum { L, R, U, D }) !void {
+    // TODO: Figure out the more principled way for checking boundaries
+    var velocity = player.pos.getVelocity();
     switch (direction) {
-        .L => player.pos.pos[0] = 156,
-        .R => player.pos.pos[0] = 4,
-        .U => player.pos.pos[1] = 156,
-        .D => player.pos.pos[1] = 4,
+        .L => {
+            const x = level.world_x - 1;
+            const y = level.world_y;
+            const lvl = db.findLevel(x, y) orelse return error.NoLevelLeft;
+
+            try loadLevel(lvl);
+            player.pos.pos[0] = 160 - @intToFloat(f32, @divFloor(player.sprite.size[0], 2));
+        },
+        .R => {
+            const x = level.world_x + 1;
+            const y = level.world_y;
+            const lvl = db.findLevel(x, y) orelse return error.NoLevelRight;
+
+            try loadLevel(lvl);
+            player.pos.pos[0] = @intToFloat(f32, @divFloor(player.sprite.size[0], 2));
+        },
+        .U => {
+            const x = level.world_x;
+            const y = level.world_y - 1;
+            const lvl = db.findLevel(x, y) orelse return error.NoLevelUp;
+
+            try loadLevel(lvl);
+            player.pos.pos[1] = 160;
+        },
+        .D => {
+            const x = level.world_x;
+            const y = level.world_y + 1;
+            const lvl = db.findLevel(x, y) orelse return error.NoLevelDown;
+
+            try loadLevel(lvl);
+            player.pos.pos[1] = @intToFloat(f32, player.sprite.size[1]);
+        },
     }
-    player.pos.last = player.pos.pos;
+    player.pos.last = player.pos.pos - velocity;
 }
 
 pub fn start() !void {
@@ -341,7 +369,12 @@ pub fn update(time: usize) !State {
     physicsProcess(1, &player.pos, &player.physics);
     try manipulationProcess(&player.pos, &player.control);
     controlProcess(time, &player.pos, &player.control, &player.physics, &player.kinematic);
-    if (player.pos.pos[0] > 160 - 4) try moveLevel(.R, 1);
+
+    if (player.pos.pos[0] > 160 - 4) try moveLevel(.R);
+    if (player.pos.pos[0] < 4) try moveLevel(.L);
+    if (player.pos.pos[1] > 160 - 4) try moveLevel(.D);
+    if (player.pos.pos[1] < 4) try moveLevel(.U);
+
     try kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
     try particles.update();

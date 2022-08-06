@@ -23,6 +23,9 @@ pub const Pos = struct {
     pub fn getDirection(pos: Pos) Vec2f {
         return pos.pos - pos.last;
     }
+    pub fn getVelocity(pos: Pos) Vec2f {
+        return pos.pos - pos.last;
+    }
 };
 pub const Control = struct {
     controller: enum { player },

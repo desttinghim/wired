@@ -33,7 +33,11 @@ export fn update() void {
             error.EndOfStream => showErr(@errorName(e)),
             error.OutOfMemory => showErr(@errorName(e)),
             error.InvalidLevel => showErr(@errorName(e)),
-                error.NullTiles => showErr(@errorName(e)),
+            error.NullTiles => showErr(@errorName(e)),
+            error.NoLevelDown => showErr(@errorName(e)),
+            error.NoLevelUp => showErr(@errorName(e)),
+            error.NoLevelLeft => showErr(@errorName(e)),
+            error.NoLevelRight => showErr(@errorName(e)),
         },
     };
     if (state != newState) {
