@@ -228,19 +228,11 @@ pub fn start() !void {
         .level = level,
         .map = &map,
         .circuit = &circuit,
-        .tileset = world.AutoTileset.initOffsetFull(113),
-        .conduit = world.AutoTileset.initOffsetFull(97),
-        .plug = world.AutoTileset.initOffsetCardinal(17),
-        .switch_off = world.AutoTileset.initSwitches(&.{
-            29, // South-North
-            25, // South-West-North
-            27, // South-East-North
-        }, 2),
-        .switch_on = world.AutoTileset.initSwitches(&.{
-            30, // South-North
-            26, // South-West-North
-            28, // South-East-West
-        }, 2),
+        .tileset = world.Tiles.Walls,
+        .conduit = world.Tiles.Conduit,
+        .plug = world.Tiles.Plugs,
+        .switch_off = world.Tiles.SwitchesOff,
+        .switch_on = world.Tiles.SwitchesOn,
     });
 
     var entity_buf = try alloc.alloc(world.Entity, level.entity_count);
@@ -627,7 +619,7 @@ fn updateCircuit() !void {
     var i: usize = 0;
     while (level.getDoor(i)) |door| : (i += 1) {
         const tile: u8 = if (door.kind == .Door) world.Tiles.Door else world.Tiles.Trapdoor;
-        try map.set_cell(.{door.x, door.y}, tile);
+        try map.set_cell(.{ door.x, door.y }, tile);
     }
 
     // Remove doors that have been unlocked

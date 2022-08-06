@@ -22,15 +22,18 @@ pub const Tiles = struct {
     // Switches
     pub const SwitchTeeWestOff = 24;
     pub const SwitchTeeWestOn = 25;
+
     pub const SwitchTeeEastOff = 26;
     pub const SwitchTeeEastOn = 27;
+
     pub const SwitchVerticalOff = 28;
     pub const SwitchVerticalOn = 29;
+
     pub const SwitchHorizontalOff = 30;
     pub const SwitchHorizontalOn = 31;
 
     pub fn is_switch(tile: u8) bool {
-        return tile >= 24 and tile <= 31;
+        return tile >= SwitchTeeWestOff and tile <= SwitchHorizontalOn;
     }
 
     // Plugs, sorted by autotile order
@@ -51,8 +54,8 @@ pub const Tiles = struct {
         return tile >= 21 and tile <= 24;
     }
 
-    pub const ConduitCross = 97;
-    pub const ConduitSingle = 113;
+    pub const ConduitCross = 96;
+    pub const ConduitSingle = 112;
 
     pub fn is_conduit(tile: u8) bool {
         return tile >= ConduitCross and tile <= ConduitSingle;
@@ -62,15 +65,15 @@ pub const Tiles = struct {
         return is_plug(tile) or is_conduit(tile) or is_switch(tile) or is_logic(tile);
     }
 
-    pub const WallSingle = 113;
+    pub const WallSingle = 112;
     pub const WallSurrounded = 127;
 
     pub fn is_wall(tile: u8) bool {
         return tile >= WallSingle and tile <= WallSurrounded;
     }
 
-    pub const Door = 3;
-    pub const Trapdoor = 4;
+    pub const Door = 2;
+    pub const Trapdoor = 3;
 
     pub fn is_door(tile: u8) bool {
         return tile == 3 or tile == 4;
@@ -89,6 +92,20 @@ pub const Tiles = struct {
     }
 
     pub const Empty = 0;
+
+    pub const Walls = AutoTileset.initOffsetFull(WallSingle);
+    pub const Conduit = AutoTileset.initOffsetFull(ConduitCross);
+    pub const Plugs = AutoTileset.initOffsetCardinal(PlugNorth);
+    pub const SwitchesOff = AutoTileset.initSwitches(&.{
+        SwitchVerticalOff, // South-North
+        SwitchTeeWestOff, // South-West-North
+        SwitchTeeEastOff, // South-East-North
+    }, 2);
+    pub const SwitchesOn = AutoTileset.initSwitches(&.{
+        SwitchVerticalOn, // South-North
+        SwitchTeeWestOn, // South-West-North
+        SwitchTeeEastOn, // South-East-North
+    }, 2);
 };
 
 pub const TileData = union(enum) {

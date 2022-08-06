@@ -188,8 +188,8 @@ pub fn extractLevel(opt: Options) !void {
                 .Switch_On => opt.switch_on.find(autotile),
                 .Switch_Off => opt.switch_off.find(autotile),
                 .Plug => opt.plug.find(autotile),
-                .And => 21,
-                .Xor => 23,
+                .And => world.Tiles.LogicAnd,
+                .Xor => world.Tiles.LogicXor,
                 else => 0,
             };
             circuit.map[i] = tile;

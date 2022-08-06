@@ -123,12 +123,12 @@ fn get_plugs(tile: u8) Plugs {
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
     const i = this.indexOf(cell) orelse return null;
-    return if (this.map[i] != 0) this.map[i] - 1 else null;
+    return if (this.map[i] != 0) this.map[i] else null;
 }
 
 pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
     const i = this.indexOf(cell) orelse return;
-    this.map[i] = tile + 1;
+    this.map[i] = tile;
     this.levels[i] = 0;
 }
 

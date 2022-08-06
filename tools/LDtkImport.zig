@@ -180,7 +180,7 @@ fn make(step: *std.build.Step) !void {
                 const i = @intCast(usize, x + y * width);
                 const sx = @divExact(autotile.src[0], collision.__gridSize);
                 const sy = @divExact(autotile.src[1], collision.__gridSize);
-                const t = sx + sy * 16 + 1;
+                const t = sx + sy * 16;
                 tiles[i] = world.TileData{ .tile = @intCast(u7, t) };
             }
 

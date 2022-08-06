@@ -82,9 +82,8 @@ pub fn draw(this: @This(), offset: Vec2) void {
         while (x < width) : (x += 1) {
             const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) } + offset;
             const pos = Vec2{ @intCast(i32, x), @intCast(i32, y) } * tile_size;
-            const tilePlus = this.get_cell(cell) orelse continue;
-            if (tilePlus == 0) continue;
-            const tile = tilePlus - 1;
+            const tile = this.get_cell(cell) orelse continue;
+            if (tile == world.Tiles.Empty) continue;
             const t = Vec2{
                 @intCast(i32, (tile % tilemap_width) * tile_width),
                 @intCast(i32, (tile / tilemap_width) * tile_width),
@@ -134,14 +133,14 @@ pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
             const bottom = @floatToInt(i32, bot_right[1]);
             const foot = body.rect.pos[1] + body.rect.size[1];
 
-            if (isOneWay(tile)) {
+            if (world.Tiles.is_oneway(tile)) {
                 if (!body.is_passing and a == bottom and body.last[1] <= body.next[1] and foot < tiley + 2) {
                     collisions.append(util.AABB{
                         .pos = Vec2f{ tilex, tiley },
                         .size = tile_sizef,
                     });
                 }
-            } else if (isSolid(tile)) {
+            } else if (world.Tiles.is_solid(tile)) {
                 collisions.append(util.AABB{
                     .pos = Vec2f{ tilex, tiley },
                     .size = tile_sizef,
@@ -171,14 +170,6 @@ pub const CollisionInfo = struct {
     }
 };
 
-pub fn isSolid(tile: u8) bool {
-    return if (tile == 0) false else world.Tiles.is_solid(tile - 1);
-}
-
-pub fn isOneWay(tile: u8) bool {
-    return if (tile == 0) false else world.Tiles.is_oneway(tile - 1);
-}
-
 // Debug functions
 
 pub fn trace(this: @This()) void {
@@ -190,8 +181,7 @@ pub fn trace(this: @This()) void {
 }
 
 pub fn traceDraw(this: @This()) void {
-    for (this.tiles) |tilePlus, i| {
-        const tile = tilePlus - 1;
+    for (this.tiles) |tile, i| {
         const t = Vec2{
             @intCast(i32, (tile % tilemap_width) * tile_width),
             @intCast(i32, (tile / tilemap_width) * tile_width),
