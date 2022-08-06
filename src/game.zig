@@ -213,21 +213,9 @@ pub fn start() !void {
 
     map = Map.init(&map_buf, level_size);
 
-    var stream = std.io.FixedBufferStream([]const u8){
-        .pos = 0,
-        .buffer = world_data,
-    };
-    const world_reader = stream.reader();
+    var db = try world.Database.init(alloc);
 
-    var levels = try world.read(alloc, world_reader);
-    var level_data_offset = try stream.getPos();
-
-    try stream.seekTo(level_data_offset + levels[0].offset);
-
-    level = try world.Level.read(world_reader);
-
-    level_buf = try alloc.alloc(world.TileData, level.size);
-    try level.readTiles(world_reader, level_buf);
+    level = try db.levelLoad(alloc, 0);
 
     try extract.extractLevel(.{
         .alloc = frame_alloc,
@@ -240,9 +228,6 @@ pub fn start() !void {
         .switch_off = world.Tiles.SwitchesOff,
         .switch_on = world.Tiles.SwitchesOn,
     });
-
-    var entity_buf = try alloc.alloc(world.Entity, level.entity_count);
-    try level.readEntities(world_reader, entity_buf);
 
     const spawnArr = level.getSpawn() orelse return error.NoPlayerSpawn;
     const spawn = Vec2{ spawnArr[0], spawnArr[1] };

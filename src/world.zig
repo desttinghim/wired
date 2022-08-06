@@ -457,6 +457,54 @@ pub fn read(alloc: std.mem.Allocator, reader: anytype) ![]LevelHeader {
     return level_headers;
 }
 
+const Cursor = std.io.FixedBufferStream([]const u8);
+pub const Database = struct {
+    cursor: Cursor,
+    level_info: []LevelHeader,
+    level_data_begin: usize,
+
+    const world_data = @embedFile(@import("world_data").path);
+
+    pub fn init(alloc: std.mem.Allocator) !Database {
+        var cursor = Cursor{
+            .pos = 0,
+            .buffer = world_data,
+        };
+
+        var reader = cursor.reader();
+
+        var levels = try read(alloc, reader);
+        var level_data_begin = @intCast(usize, try cursor.getPos());
+
+        return Database{
+            .cursor = cursor,
+            .level_info = levels,
+            .level_data_begin = level_data_begin,
+        };
+    }
+
+    pub fn levelInfo(db: *Database, level: usize) !Level {
+        try db.cursor.seekTo(db.level_data_begin + db.level_info[level].offset);
+        const reader = db.cursor.reader();
+
+        return try Level.read(reader);
+    }
+
+    pub fn levelLoad(db: *Database, alloc: std.mem.Allocator, level: usize) !Level {
+        var level_info = try db.levelInfo(level);
+
+        const reader = db.cursor.reader();
+
+        var level_buf = try alloc.alloc(TileData, level_info.size);
+        try level_info.readTiles(reader, level_buf);
+
+        var entity_buf = try alloc.alloc(Entity, level_info.entity_count);
+        try level_info.readEntities(reader, entity_buf);
+
+        return level_info;
+    }
+};
+
 // All levels in the game. If two rooms are next to each other, they
 // are assumed to be neighbors. Leaving the screen will load in the next
 // level in that direction. The player is placed at the same position
