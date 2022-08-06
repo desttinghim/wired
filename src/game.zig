@@ -140,7 +140,7 @@ fn randRangeF(min: f32, max: f32) f32 {
 }
 
 // Allocators
-var fba_buf: [4096]u8 = undefined;
+var fba_buf: [8192]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
 var alloc = fba.allocator();
 
@@ -217,11 +217,34 @@ pub fn start() !void {
         .pos = 0,
         .buffer = world_data,
     };
+    w4.tracef("[world]: size=%d", world_data.len);
     const world_reader = stream.reader();
 
+    var levels = try world.read(alloc, world_reader);
+    var level_data_offset = try stream.getPos();
+    w4.tracef("header_size=%d", level_data_offset);
+
+    try stream.seekTo(level_data_offset + levels[1].offset);
+    w4.tracef("seek_to=%d", try stream.getPos());
+
+    for (levels) |lvl, i| {
+        w4.tracef("[%d]: offset=%d, x=%d, y=%d", i, lvl.offset, @intCast(isize, lvl.x), @intCast(isize, lvl.y));
+    }
+
     level = try world.Level.read(world_reader);
+    w4.tracef("level_read_end=%d", try stream.getPos());
+    // w4.tracef(
+    //     "[level 0]: x=%d, y=%d, width=%d, size=%d, entity_count=%d, seek_head=%d",
+    //     level.world_x,
+    //     level.world_y,
+    //     level.width,
+    //     level.size,
+    //     level.entity_count,
+    // );
+
     level_buf = try alloc.alloc(world.TileData, level.size);
     try level.readTiles(world_reader, level_buf);
+    w4.tracef("level_read_end=%d", try stream.getPos());
 
     try extract.extractLevel(.{
         .alloc = frame_alloc,
@@ -235,10 +258,13 @@ pub fn start() !void {
         .switch_on = world.Tiles.SwitchesOn,
     });
 
+    w4.tracef("entity_count=%d", level.entity_count);
+    w4.tracef("entity_size=%d", level.entity_count * world.Entity.calculateSize());
     var entity_buf = try alloc.alloc(world.Entity, level.entity_count);
     try level.readEntities(world_reader, entity_buf);
+    w4.tracef("entity_read_end=%d", try stream.getPos());
 
-    const spawnArr = level.getSpawn().?;
+    const spawnArr = level.getSpawn() orelse return error.NoPlayerSpawn;
     const spawn = Vec2{ spawnArr[0], spawnArr[1] };
 
     camera = @divTrunc(spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));

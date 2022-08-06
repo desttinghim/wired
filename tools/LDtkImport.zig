@@ -46,19 +46,16 @@ fn make(step: *std.build.Step) !void {
     const source = try source_file.readToEndAlloc(allocator, 10 * MB);
     defer allocator.free(source);
 
-    // Create output array to write to
-    var data = std.ArrayList(u8).init(allocator);
-    defer data.deinit();
-    const writer = data.writer();
-
     var ldtk_parser = try LDtk.parse(allocator, source);
     defer ldtk_parser.deinit();
 
     const ldtk = ldtk_parser.root;
 
-    if (ldtk.levels.len > 0) {
-        const level = ldtk.levels[0];
+    // Store levels
+    var levels = std.ArrayList(world.Level).init(allocator);
+    defer levels.deinit();
 
+    for (ldtk.levels) |level| {
         var entity_array = std.ArrayList(world.Entity).init(allocator);
         defer entity_array.deinit();
 
@@ -68,13 +65,88 @@ fn make(step: *std.build.Step) !void {
             .level = level,
             .entity_array = &entity_array,
         });
-        defer allocator.free(parsed_level.tiles.?);
 
-        // Save the level!
-        try parsed_level.write(writer);
+        try levels.append(parsed_level);
+    }
+    defer for (levels.items) |level| {
+        allocator.free(level.tiles.?);
+        allocator.free(level.entities.?);
+    };
+
+    // Calculate the offset of each level and store it in the headers.
+    // Offset is relative to the beginning of level.data
+    var level_headers = std.ArrayList(world.LevelHeader).init(allocator);
+    defer level_headers.deinit();
+
+    for (levels.items) |level, i| {
+        if (level_headers.items.len == 0) {
+            try level_headers.append(.{
+                .x = level.world_x,
+                .y = level.world_y,
+                .offset = 0,
+            });
+            continue;
+        }
+        const last_offset = level_headers.items[i - 1].offset;
+        const last_size = try levels.items[i - 1].calculateSize();
+        const offset = @intCast(u16, last_offset + last_size);
+        try level_headers.append(.{
+            .x = level.world_x,
+            .y = level.world_y,
+            .offset = offset,
+        });
+        std.log.warn("[{}] x={} y={}; {} + {} = {}", .{ i, level.world_x, level.world_y, last_offset, last_size, offset });
     }
 
-    // Open output file and write data
+    // Create array to write data to
+    var data = std.ArrayList(u8).init(allocator);
+    defer data.deinit();
+    const writer = data.writer();
+
+    try world.write(level_headers.items, writer);
+
+    // Write levels
+    for (levels.items) |level| {
+        std.log.warn("{} + {} + {} + {} + {} + {} + {}", .{
+            @sizeOf(i8),
+            @sizeOf(i8),
+            @sizeOf(u16),
+            @sizeOf(u16),
+            @sizeOf(u16),
+            level.tiles.?.len,
+            level.entities.?.len * world.Entity.calculateSize(),
+        });
+
+        std.log.warn("x={} y={} w={} s={} ec={} t={} e={}", .{
+            level.world_x,
+            level.world_y,
+            level.width,
+            level.size,
+            level.entity_count,
+            level.tiles.?.len,
+            level.entities.?.len,
+        });
+        try level.write(writer);
+    }
+
+    {
+        var stream = std.io.FixedBufferStream([]const u8){
+            .pos = 0,
+            .buffer = data.items,
+        };
+        const world_reader = stream.reader();
+        var lvls = try world.read(allocator, world_reader);
+        var level_data_offset = try stream.getPos();
+        std.log.warn("level_data_offset {}", .{level_data_offset});
+
+        try stream.seekTo(level_data_offset + lvls[1].offset);
+        std.log.warn("seek to 1 {}", .{try stream.getPos()});
+
+        var level = try world.Level.read(world_reader);
+        std.log.warn("level x={}, y={}", .{ level.world_x, level.world_y });
+    }
+
+    // Open output file and write data into it
     cwd.makePath(this.builder.getInstallPath(.lib, "")) catch |e| switch (e) {
         error.PathAlreadyExists => {},
         else => return e,
@@ -84,7 +156,7 @@ fn make(step: *std.build.Step) !void {
     this.world_data.path = output;
 }
 
-/// Returns parsed layers of the
+/// Returns parsed level. User owns level.tiles
 fn parseLevel(opt: struct {
     allocator: std.mem.Allocator,
     ldtk: LDtk.Root,
@@ -98,8 +170,8 @@ fn parseLevel(opt: struct {
 
     const layers = level.layerInstances orelse return error.NoLayers;
 
-    const world_x: u8 = @intCast(u8, @divExact(level.worldX, (ldtk.worldGridWidth orelse 160)));
-    const world_y: u8 = @intCast(u8, @divExact(level.worldY, (ldtk.worldGridHeight orelse 160)));
+    const world_x: i8 = @intCast(i8, @divExact(level.worldX, (ldtk.worldGridWidth orelse 160)));
+    const world_y: i8 = @intCast(i8, @divExact(level.worldY, (ldtk.worldGridHeight orelse 160)));
 
     var circuit_layer: ?LDtk.LayerInstance = null;
     var collision_layer: ?LDtk.LayerInstance = null;
@@ -202,12 +274,9 @@ fn parseLevel(opt: struct {
         .width = @intCast(u16, width),
         .size = @intCast(u16, size),
         .entity_count = @intCast(u16, entity_array.items.len),
-        .tiles = null,
-        .entities = entity_array.items,
+        .tiles = try allocator.alloc(world.TileData, size),
+        .entities = try allocator.dupe(world.Entity, entity_array.items),
     };
-    parsed_level.tiles = try allocator.alloc(world.TileData, size);
-    // NOTE:
-    // defer allocator.free(level.tiles.?);
 
     const tiles = parsed_level.tiles.?;
 

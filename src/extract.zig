@@ -26,6 +26,7 @@ fn is_solid(tile: u7) bool {
 
 /// Extracts a compressed level into the map and circuit buffers
 pub fn extractLevel(opt: Options) !void {
+    w4.tracef("extract begin");
     const map = opt.map;
     const circuit = opt.circuit;
     const alloc = opt.alloc;
@@ -35,18 +36,21 @@ pub fn extractLevel(opt: Options) !void {
     const tiles = level.tiles orelse return error.NullTiles;
 
     const width = level.width;
+    w4.tracef("div exact %d, %d", tiles.len, level.width);
     const height = @divExact(@intCast(u16, tiles.len), level.width);
     const size = tiles.len;
 
     map.map_size = .{ level.width, height };
     circuit.map_size = .{ level.width, height };
 
+    w4.tracef("%d", @src().line);
     var auto_map = try alloc.alloc(bool, size);
     defer alloc.free(auto_map);
 
     var circuit_map = try alloc.alloc(CircuitType, size);
     defer alloc.free(circuit_map);
 
+    w4.tracef("reading tiles");
     for (tiles) |data, i| {
         switch (data) {
             .tile => |tile| {
@@ -64,6 +68,7 @@ pub fn extractLevel(opt: Options) !void {
     var autotiles = try alloc.alloc(?AutoTile, size);
     defer alloc.free(autotiles);
 
+    w4.tracef("autotile walls");
     // Auto generate walls
     {
         var i: usize = 0;
@@ -123,6 +128,7 @@ pub fn extractLevel(opt: Options) !void {
         }
     }
 
+    w4.tracef("autotile circuit");
     // Auto generate circuit
     // Re-use autotiles to save memory
     {
@@ -195,4 +201,5 @@ pub fn extractLevel(opt: Options) !void {
             circuit.map[i] = tile;
         }
     }
+    w4.tracef("extract end");
 }

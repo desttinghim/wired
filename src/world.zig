@@ -139,8 +139,8 @@ pub const TileData = union(enum) {
 };
 
 pub const Level = struct {
-    world_x: u8,
-    world_y: u8,
+    world_x: i8,
+    world_y: i8,
     width: u16,
     size: u16,
     entity_count: u16,
@@ -159,11 +159,23 @@ pub const Level = struct {
         };
     }
 
+    pub fn calculateSize(level: Level) !usize {
+        const tiles = level.tiles orelse return error.NullTiles;
+        const entities = level.entities orelse return error.NullEntities;
+        return @sizeOf(i8) + // world_x
+            @sizeOf(i8) + // world_y
+            @sizeOf(u16) + // width
+            @sizeOf(u16) + // size
+            @sizeOf(u16) + // entity_count
+            tiles.len + //
+            entities.len * 5;
+    }
+
     pub fn write(level: Level, writer: anytype) !void {
         var tiles = level.tiles orelse return error.NullTiles;
         var entities = level.entities orelse return error.NullEntities;
-        try writer.writeInt(u8, level.world_x, .Little);
-        try writer.writeInt(u8, level.world_y, .Little);
+        try writer.writeInt(i8, level.world_x, .Little);
+        try writer.writeInt(i8, level.world_y, .Little);
         try writer.writeInt(u16, level.width, .Little);
         try writer.writeInt(u16, level.size, .Little);
         try writer.writeInt(u16, level.entity_count, .Little);
@@ -179,8 +191,8 @@ pub const Level = struct {
 
     pub fn read(reader: anytype) !Level {
         return Level{
-            .world_x = try reader.readInt(u8, .Little),
-            .world_y = try reader.readInt(u8, .Little),
+            .world_x = try reader.readInt(i8, .Little),
+            .world_y = try reader.readInt(i8, .Little),
             .width = try reader.readInt(u16, .Little),
             .size = try reader.readInt(u16, .Little),
             .entity_count = try reader.readInt(u16, .Little),
@@ -374,6 +386,12 @@ pub const Entity = struct {
     x: i16,
     y: i16,
 
+    pub fn calculateSize() usize {
+        return @sizeOf(u8) + // kind
+            @sizeOf(i16) + // x
+            @sizeOf(i16); // y
+    }
+
     pub fn write(entity: Entity, writer: anytype) !void {
         try writer.writeInt(u8, @enumToInt(entity.kind), .Little);
         try writer.writeInt(i16, entity.x, .Little);
@@ -396,34 +414,64 @@ pub const Entity = struct {
 // | node data...             |
 // | level data...            |
 
-const LevelHeader = struct { x: u8, y: u8, offset: u16 };
+pub const LevelHeader = struct {
+    x: i8,
+    y: i8,
+    offset: u16,
 
+    pub fn write(header: LevelHeader, writer: anytype) !void {
+        try writer.writeInt(i8, header.x, .Little);
+        try writer.writeInt(i8, header.y, .Little);
+        try writer.writeInt(u16, header.offset, .Little);
+    }
 
-pub const World = struct {
-    /// All levels in the game. If two rooms are next to each other, they
-    /// are assumed to be neighbors. Leaving the screen will load in the next
-    /// level in that direction. The player is placed at the same position
-    /// vertically, but on the opposite side of the screen horizontally. Vice versa
-    /// for vertically moving between screens. The player will retain their momentum.
-    ///
-    /// When a wire crosses a screen boundary, it will coil up at the player's feet
-    /// automatically. If one side of the wire is pinned, the wire will be let go of.
-    ///
-    /// Alternatively, the wire will be pinned outside of the level. If it isn't pinned,
-    /// I will need to freeze it and move it in a snake like fashion. Or just leave the
-    /// other level loaded.
-    levels: []Level,
-    /// An abstract representation of all circuits in game.
-    abstract_circuit: []CircuitNode,
-
-    // pub fn write(world: Entity, writer: anytype) !void {
-    //     try writer.writeInt(u16, circuit_nodes.len, .Little);
-    //     try writer.writeInt(u16, levels.len, .Little);
-    //     for (circuit_nodes) |node| {
-    //         try node.write_header(writer);
-    //     }
-    // }
+    pub fn read(reader: anytype) !LevelHeader {
+        return LevelHeader{
+            .x = try reader.readInt(i8, .Little),
+            .y = try reader.readInt(i8, .Little),
+            .offset = try reader.readInt(u16, .Little),
+        };
+    }
 };
+
+pub fn write(level_headers: []LevelHeader, writer: anytype) !void {
+    // Write number of levels
+    try writer.writeInt(u16, @intCast(u16, level_headers.len), .Little);
+
+    // Write headers
+    for (level_headers) |lvl_header| {
+        try lvl_header.write(writer);
+    }
+}
+
+pub fn read(alloc: std.mem.Allocator, reader: anytype) ![]LevelHeader {
+    // read number of levels
+    const level_count = try reader.readInt(u16, .Little);
+
+    var level_headers = try alloc.alloc(LevelHeader, level_count);
+    // read headers
+    for (level_headers) |_, i| {
+        level_headers[i] = try LevelHeader.read(reader);
+    }
+
+    return level_headers;
+}
+
+// All levels in the game. If two rooms are next to each other, they
+// are assumed to be neighbors. Leaving the screen will load in the next
+// level in that direction. The player is placed at the same position
+// vertically, but on the opposite side of the screen horizontally. Vice versa
+// for vertically moving between screens. The player will retain their momentum.
+//
+// When a wire crosses a screen boundary, it will coil up at the player's feet
+// automatically. If one side of the wire is pinned, the wire will be let go of.
+//
+// Alternatively, the wire will be pinned outside of the level. If it isn't pinned,
+// I will need to freeze it and move it in a snake like fashion. Or just leave the
+// other level loaded.
+// levels: []Level,
+// An abstract representation of all circuits in game.
+// abstract_circuit: []CircuitNode,
 
 const NodeID = u16;
 
