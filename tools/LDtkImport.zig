@@ -109,12 +109,7 @@ fn make(step: *std.build.Step) !void {
     defer data.deinit();
     const writer = data.writer();
 
-    try world.write(level_headers.items, writer);
-
-    // Write levels
-    for (levels.items) |level| {
-        try level.write(writer);
-    }
+    try world.write(writer, level_headers.items, circuit.items, levels.items);
 
     // Open output file and write data into it
     cwd.makePath(this.builder.getInstallPath(.lib, "")) catch |e| switch (e) {
@@ -283,7 +278,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
     const SearchItem = struct {
         coord: Coord,
         last_coord: ?Coord = null,
-        last_node: u16,
+        last_node: world.NodeID,
     };
     const Queue = std.TailQueue(SearchItem);
     const Node = Queue.Node;
@@ -309,7 +304,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
             const y = global_y + @intCast(i16, @divTrunc(i, level.width));
             const coordinate = try alloc.create(Node);
             coordinate.* = .{ .data = .{
-                .last_node = @intCast(u16, nodes.items.len),
+                .last_node = @intCast(world.NodeID, nodes.items.len),
                 .coord = Coord.init(.{ x, y }),
             } };
             switch (tileData) {
@@ -324,7 +319,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         },
                         .Plug => {
                             // try nodes.append(.{ .kind = .{ .Plug = null } });
-                            coordinate.data.last_node = 20000;
+                            coordinate.data.last_node = std.math.maxInt(world.NodeID);
                             plugs.append(coordinate);
                         },
                         else => {
@@ -370,21 +365,22 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 const flags = tile.flags;
 
                 switch (flags.circuit) {
-                    .Source, .Conduit => {
+                    .Source => {}, // Do nothing, but add everything around the source
+                    .Conduit => {
                         // Collects from two other nodes. Needs to store more info in coordinate queue
                         // TODO
                     },
                     .Plug => {
                         // These have already been added, so just continue the
                         // search
-                        next_node = @intCast(u16, nodes.items.len);
+                        next_node = @intCast(world.NodeID, nodes.items.len);
                         try nodes.append(.{
                             .kind = .{ .Plug = null },
                             .coord = coord,
                         });
                     },
                     .Outlet => {
-                        next_node = @intCast(u16, nodes.items.len);
+                        next_node = @intCast(world.NodeID, nodes.items.len);
                         try nodes.append(.{
                             .kind = .{ .Outlet = last_node },
                             .coord = coord,
@@ -392,7 +388,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     },
                     .Switch_Off => {
                         // TODO: Find last coordinate of search and determine flow
-                        next_node = @intCast(u16, nodes.items.len);
+                        next_node = @intCast(world.NodeID, nodes.items.len);
                         try nodes.append(.{
                             .kind = .{ .Switch = .Off },
                             .coord = coord,
@@ -400,7 +396,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     },
                     .Switch_On => {
                         // TODO: Find last coordinate of search and determine flow
-                        next_node = @intCast(u16, nodes.items.len);
+                        next_node = @intCast(world.NodeID, nodes.items.len);
                         try nodes.append(.{
                             .kind = .{ .Switch = .Off },
                             .coord = coord,
@@ -412,7 +408,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             std.log.warn("Join first side", .{});
                         } else {
                             std.log.warn("Join second side", .{});
-                            next_node = @intCast(u16, nodes.items.len);
+                            next_node = @intCast(world.NodeID, nodes.items.len);
                             try nodes.append(.{
                                 .kind = .{ .Join = last_node },
                                 .coord = coord,
@@ -452,15 +448,15 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                 // may have come from a plug
                                 return error.OutputToSource;
                             } else if (side == .L) {
-                                next_node = @intCast(u16, nodes.items.len);
+                                next_node = @intCast(world.NodeID, nodes.items.len);
                                 try nodes.append(.{
-                                    .kind = .{ .And = .{ last_node, 20000 } },
+                                    .kind = .{ .And = .{ last_node, std.math.maxInt(world.NodeID) } },
                                     .coord = coord,
                                 });
                             } else if (side == .R) {
-                                next_node = @intCast(u16, nodes.items.len);
+                                next_node = @intCast(world.NodeID, nodes.items.len);
                                 try nodes.append(.{
-                                    .kind = .{ .And = .{ 20000, last_node } },
+                                    .kind = .{ .And = .{ std.math.maxInt(world.NodeID), last_node } },
                                     .coord = coord,
                                 });
                             }
@@ -498,15 +494,15 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                 // may have come from a plug
                                 return error.OutputToSource;
                             } else if (side == .L) {
-                                next_node = @intCast(u16, nodes.items.len);
+                                next_node = @intCast(world.NodeID, nodes.items.len);
                                 try nodes.append(.{
-                                    .kind = .{ .Xor = .{ last_node, 20000 } },
+                                    .kind = .{ .Xor = .{ last_node, std.math.maxInt(world.NodeID) } },
                                     .coord = coord,
                                 });
                             } else if (side == .R) {
-                                next_node = @intCast(u16, nodes.items.len);
+                                next_node = @intCast(world.NodeID, nodes.items.len);
                                 try nodes.append(.{
-                                    .kind = .{ .Xor = .{ 20000, last_node } },
+                                    .kind = .{ .Xor = .{ std.math.maxInt(world.NodeID), last_node } },
                                     .coord = coord,
                                 });
                             }

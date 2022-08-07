@@ -151,6 +151,18 @@ pub const Coordinate = struct {
         return Coordinate{ .val = val };
     }
 
+    pub fn read(reader: anytype) !Coordinate {
+        return Coordinate{ .val = .{
+            try reader.readInt(i16, .Little),
+            try reader.readInt(i16, .Little),
+        } };
+    }
+
+    pub fn write(coord: Coordinate, writer: anytype) !void {
+        try writer.writeInt(i16, coord.val[0], .Little);
+        try writer.writeInt(i16, coord.val[1], .Little);
+    }
+
     pub fn add(coord: Coordinate, val: [2]i16) Coordinate {
         return .{ .val = .{ coord.val[0] + val[0], coord.val[1] + val[1] } };
     }
@@ -463,8 +475,7 @@ pub const Entity = struct {
 };
 
 // Data format:
-// | node count | level count |
-// | node headers...          |
+// | level count | node count |
 // | level headers...         |
 // | node data...             |
 // | level data...            |
@@ -489,34 +500,40 @@ pub const LevelHeader = struct {
     }
 };
 
-pub fn write(level_headers: []LevelHeader, writer: anytype) !void {
+pub fn write(
+    writer: anytype,
+    level_headers: []LevelHeader,
+    circuit_nodes: []CircuitNode,
+    levels: []Level,
+) !void {
     // Write number of levels
     try writer.writeInt(u16, @intCast(u16, level_headers.len), .Little);
+    // Write number of circuit nodes
+    try writer.writeInt(u16, @intCast(u16, circuit_nodes.len), .Little);
 
     // Write headers
     for (level_headers) |lvl_header| {
         try lvl_header.write(writer);
     }
-}
 
-pub fn read(alloc: std.mem.Allocator, reader: anytype) ![]LevelHeader {
-    // read number of levels
-    const level_count = try reader.readInt(u16, .Little);
-
-    var level_headers = try alloc.alloc(LevelHeader, level_count);
-    // read headers
-    for (level_headers) |_, i| {
-        level_headers[i] = try LevelHeader.read(reader);
+    // Write node data
+    for (circuit_nodes) |node| {
+        try node.write(writer);
     }
 
-    return level_headers;
+    // Write levels
+    for (levels) |level| {
+        try level.write(writer);
+    }
 }
 
 const Cursor = std.io.FixedBufferStream([]const u8);
 pub const Database = struct {
     cursor: Cursor,
     level_info: []LevelHeader,
+    circuit_info: []CircuitNode,
     level_data_begin: usize,
+    // circuit_data_begin: usize,
 
     const world_data = @embedFile(@import("world_data").path);
 
@@ -528,12 +545,31 @@ pub const Database = struct {
 
         var reader = cursor.reader();
 
-        var levels = try read(alloc, reader);
+        // read number of levels
+        const level_count = try reader.readInt(u16, .Little);
+        // read number of nodes
+        const node_count = try reader.readInt(u16, .Little);
+
+        var level_headers = try alloc.alloc(LevelHeader, level_count);
+
+        // read headers
+        for (level_headers) |_, i| {
+            level_headers[i] = try LevelHeader.read(reader);
+        }
+
+        var circuit_nodes = try alloc.alloc(CircuitNode, node_count);
+
+        // read headers
+        for (circuit_nodes) |_, i| {
+            circuit_nodes[i] = try CircuitNode.read(reader);
+        }
+
         var level_data_begin = @intCast(usize, try cursor.getPos());
 
         return Database{
             .cursor = cursor,
-            .level_info = levels,
+            .level_info = level_headers,
+            .circuit_info = circuit_nodes,
             .level_data_begin = level_data_begin,
         };
     }
@@ -586,12 +622,24 @@ pub const Database = struct {
 // An abstract representation of all circuits in game.
 // abstract_circuit: []CircuitNode,
 
-const NodeID = u16;
+pub const NodeID = u8;
 
 pub const CircuitNode = struct {
     energized: bool = false,
     kind: NodeKind,
     coord: Coordinate,
+
+    pub fn read(reader: anytype) !CircuitNode {
+        return CircuitNode{
+            .coord = try Coordinate.read(reader),
+            .kind = try NodeKind.read(reader),
+        };
+    }
+
+    pub fn write(node: CircuitNode, writer: anytype) !void {
+        try node.coord.write(writer);
+        try node.kind.write(writer);
+    }
 
     pub fn format(node: CircuitNode, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = options;
@@ -604,7 +652,18 @@ pub const CircuitNode = struct {
     }
 };
 
-pub const NodeKind = union(enum) {
+const NodeEnum = enum(u4) {
+    And,
+    Xor,
+    Source,
+    Conduit,
+    Plug,
+    Switch,
+    Join,
+    Outlet,
+};
+
+pub const NodeKind = union(NodeEnum) {
     /// An And logic gate
     And: [2]NodeID,
     /// A Xor logic gate
@@ -621,9 +680,90 @@ pub const NodeKind = union(enum) {
     /// Vertical = Off or Top/Bottom, depending on flow
     /// Horizontal =  Off or Left/Right, depending on flow
     /// Tee = Top/Bottom or Left/Right, depending on flow
-    Switch: enum { Off, Bottom, Top, Left, Right },
+    Switch: SwitchEnum,
     Join: NodeID,
     Outlet: NodeID,
+
+    const SwitchEnum = enum { Off, Bottom, Top, Left, Right };
+
+    pub fn read(reader: anytype) !NodeKind {
+        var kind: NodeKind = undefined;
+        const nodeEnum = @intToEnum(NodeEnum, try reader.readInt(u8, .Little));
+        switch (nodeEnum) {
+            .And => {
+                kind = .{ .And = .{
+                    try reader.readInt(NodeID, .Little),
+                    try reader.readInt(NodeID, .Little),
+                } };
+            },
+            .Xor => {
+                kind = .{ .Xor = .{
+                    try reader.readInt(NodeID, .Little),
+                    try reader.readInt(NodeID, .Little),
+                } };
+            },
+            .Source => kind = .Source,
+            .Conduit => {
+                kind = .{ .Conduit = .{
+                    try reader.readInt(NodeID, .Little),
+                    try reader.readInt(NodeID, .Little),
+                } };
+            },
+            .Plug => {
+                const plug =
+                    try reader.readInt(NodeID, .Little);
+                if (plug == std.math.maxInt(NodeID)) {
+                    kind = .{ .Plug = null };
+                } else {
+                    kind = .{ .Plug = plug };
+                }
+            },
+            .Switch => {
+                kind = .{
+                    .Switch = @intToEnum(SwitchEnum, try reader.readInt(NodeID, .Little)),
+                };
+            },
+            .Join => {
+                kind = .{ .Join = try reader.readInt(NodeID, .Little) };
+            },
+            .Outlet => {
+                kind = .{ .Outlet = try reader.readInt(NodeID, .Little) };
+            },
+        }
+        return kind;
+    }
+
+    pub fn write(kind: NodeKind, writer: anytype) !void {
+        try writer.writeInt(u8, @enumToInt(kind), .Little);
+        switch (kind) {
+            .And => |And| {
+                try writer.writeInt(NodeID, And[0], .Little);
+                try writer.writeInt(NodeID, And[1], .Little);
+            },
+            .Xor => |Xor| {
+                try writer.writeInt(NodeID, Xor[0], .Little);
+                try writer.writeInt(NodeID, Xor[1], .Little);
+            },
+            .Source => {},
+            .Conduit => |Conduit| {
+                try writer.writeInt(NodeID, Conduit[0], .Little);
+                try writer.writeInt(NodeID, Conduit[1], .Little);
+            },
+            .Plug => |Plug| {
+                const plug = Plug orelse std.math.maxInt(NodeID);
+                try writer.writeInt(NodeID, plug, .Little);
+            },
+            .Switch => |Switch| {
+                try writer.writeInt(NodeID, @enumToInt(Switch), .Little);
+            },
+            .Join => |Join| {
+                try writer.writeInt(NodeID, Join, .Little);
+            },
+            .Outlet => |Outlet| {
+                try writer.writeInt(NodeID, Outlet, .Little);
+            },
+        }
+    }
 
     pub fn format(kind: NodeKind, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = options;
