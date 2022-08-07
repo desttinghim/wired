@@ -468,11 +468,47 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     },
                     .Xor => {
                         // TODO: verify Xor gate is properly connected
-                        next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{
-                            .kind = .{ .Xor = .{ last_node, last_node } },
-                            .coord = coord,
-                        });
+                        const last_coord = node.data.last_coord.?;
+                        const Side = enum { O, L, R };
+                        const side: Side =
+                            if (last_coord[0] == coord[0] - 1)
+                            Side.L
+                        else if (last_coord[0] == coord[0] + 1)
+                            Side.R
+                        else
+                            Side.O;
+                        // std.log.warn("{any}: {}", .{ coord, side });
+                        if (multi_input.get(coord)) |a| {
+                            switch (side) {
+                                .L => {
+                                    // std.log.warn("Filling left", .{});
+                                    nodes.items[a].kind.Xor[0] = last_node;
+                                },
+                                .R => {
+                                    // std.log.warn("Filling right", .{});
+                                    nodes.items[a].kind.Xor[1] = last_node;
+                                },
+                                else => {},// reverse connection
+                            }
+                        } else {
+                            _ = visited.remove(coord);
+                            if (side == .O) {
+                                return error.OutputToSource;
+                            } else if (side == .L) {
+                                next_node = @intCast(u16, nodes.items.len);
+                                try nodes.append(.{
+                                    .kind = .{ .Xor = .{ last_node, 20000 } },
+                                    .coord = coord,
+                                });
+                            } else if (side == .R) {
+                                next_node = @intCast(u16, nodes.items.len);
+                                try nodes.append(.{
+                                    .kind = .{ .Xor = .{ 20000, last_node } },
+                                    .coord = coord,
+                                });
+                            }
+                            try multi_input.put(coord, next_node);
+                        }
                     },
                     else => continue,
                 }
