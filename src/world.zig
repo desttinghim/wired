@@ -141,6 +141,48 @@ pub const TileData = union(enum) {
     }
 };
 
+// Shorthand
+const Coord = Coordinate;
+pub const Coordinate = struct {
+    const LEVELSIZE = 20;
+    val: [2]i16,
+
+    pub fn init(val: [2]i16) Coordinate {
+        return Coordinate{ .val = val };
+    }
+
+    pub fn add(coord: Coordinate, val: [2]i16) Coordinate {
+        return .{ .val = .{ coord.val[0] + val[0], coord.val[1] + val[1] } };
+    }
+
+    pub fn eq(coord: Coordinate, other: Coordinate) bool {
+        return coord.val[0] == other.val[0] and coord.val[1] == other.val[1];
+    }
+
+    pub fn toWorld(coord: Coordinate) [2]i8 {
+        const world_x = @intCast(i8, @divFloor(coord.val[0], LEVELSIZE));
+        const world_y = @intCast(i8, @divFloor(coord.val[1], LEVELSIZE));
+        return .{ world_x, world_y };
+    }
+
+    pub fn toLevelTopLeft(coord: Coordinate) Coordinate {
+        const worldc = coord.toWorld();
+        return .{ .val = .{
+            @intCast(i16, worldc[0]) * LEVELSIZE,
+            @intCast(i16, worldc[1]) * LEVELSIZE,
+        } };
+    }
+
+    pub fn format(coord: Coordinate, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        if (fmt.len == 0 or comptime std.mem.eql(u8, fmt, "p")) {
+            return std.fmt.format(writer, "({d:>5},{d:>5})", .{ coord.val[0], coord.val[1] });
+        } else {
+            @compileError("Unknown format character: '" ++ fmt ++ "'");
+        }
+    }
+};
+
 pub const Level = struct {
     world_x: i8,
     world_y: i8,
@@ -230,6 +272,16 @@ pub const Level = struct {
             }
         }
         return null;
+    }
+
+    pub fn getTile(level: Level, globalc: Coord) ?TileData {
+        const tiles = level.tiles orelse return null;
+        const worldc = globalc.toLevelTopLeft();
+        const x = globalc.val[0] - worldc.val[0];
+        const y = globalc.val[1] - worldc.val[1];
+        const w = @intCast(i16, level.width);
+        const i = @intCast(usize, x + y * w);
+        return tiles[i];
     }
 
     pub fn getWire(level: *Level, num: usize) ?[2]Entity {
@@ -539,7 +591,17 @@ const NodeID = u16;
 pub const CircuitNode = struct {
     energized: bool = false,
     kind: NodeKind,
-    coord: [2]i16,
+    coord: Coordinate,
+
+    pub fn format(node: CircuitNode, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        if (fmt.len != 0) @compileError("Unknown format character: '" ++ fmt ++ "'");
+        return std.fmt.format(writer, "{} {c} {}", .{
+            node.coord,
+            if (node.energized) @as(u8, '1') else @as(u8, '0'),
+            node.kind,
+        });
+    }
 };
 
 pub const NodeKind = union(enum) {
@@ -562,4 +624,20 @@ pub const NodeKind = union(enum) {
     Switch: enum { Off, Bottom, Top, Left, Right },
     Join: NodeID,
     Outlet: NodeID,
+
+    pub fn format(kind: NodeKind, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        if (fmt.len != 0) @compileError("Unknown format character: '" ++ fmt ++ "'");
+        const name = @tagName(kind);
+        return switch (kind) {
+            .Conduit => |Conduit| std.fmt.format(writer, "{s} [{}, {}]", .{ name, Conduit[0], Conduit[1] }),
+            .And => |And| std.fmt.format(writer, "{s} [{}, {}]", .{ name, And[0], And[1] }),
+            .Xor => |Xor| std.fmt.format(writer, "{s} [{}, {}]", .{ name, Xor[0], Xor[1] }),
+            .Source => std.fmt.format(writer, "{s}", .{name}),
+            .Plug => |Plug| std.fmt.format(writer, "{s} [{?}]", .{ name, Plug }),
+            .Switch => |Switch| std.fmt.format(writer, "{s} [{s}]", .{ name, @tagName(Switch) }),
+            .Join => |Join| std.fmt.format(writer, "{s} [{}]", .{ name, Join }),
+            .Outlet => |Outlet| std.fmt.format(writer, "{s} [{}]", .{ name, Outlet }),
+        };
+    }
 };

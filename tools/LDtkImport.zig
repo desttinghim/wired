@@ -77,7 +77,7 @@ fn make(step: *std.build.Step) !void {
     defer circuit.deinit();
     // TODO
     for (circuit.items) |node, i| {
-        std.log.warn("[{:0>2}]: {s:<10} {any}\t\t{}", .{ i, @tagName(node.kind), node.coord, node.kind });
+        std.log.warn("{:0>2}: {}", .{ i, node });
     }
 
     // Calculate the offset of each level and store it in the headers.
@@ -279,10 +279,10 @@ fn parseLevel(opt: struct {
 }
 
 pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayList(world.CircuitNode) {
-    const Coordinate = [2]i16;
+    const Coord = world.Coordinate;
     const SearchItem = struct {
-        coord: Coordinate,
-        last_coord: ?Coordinate = null,
+        coord: Coord,
+        last_coord: ?Coord = null,
         last_node: u16,
     };
     const Queue = std.TailQueue(SearchItem);
@@ -302,15 +302,15 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
         try level_hashmap.put(id, level);
 
         // Use a global coordinate system for our algorithm
-        const world_x = @intCast(i16, level.world_x) * 20;
-        const world_y = @intCast(i16, level.world_y) * 20;
+        const global_x = @intCast(i16, level.world_x) * 20;
+        const global_y = @intCast(i16, level.world_y) * 20;
         for (level.tiles orelse continue) |tileData, i| {
-            const x = world_x + @intCast(i16, @mod(i, level.width));
-            const y = world_y + @intCast(i16, @divTrunc(i, level.width));
+            const x = global_x + @intCast(i16, @mod(i, level.width));
+            const y = global_y + @intCast(i16, @divTrunc(i, level.width));
             const coordinate = try alloc.create(Node);
             coordinate.* = .{ .data = .{
                 .last_node = @intCast(u16, nodes.items.len),
-                .coord = .{ x, y },
+                .coord = Coord.init(.{ x, y }),
             } };
             switch (tileData) {
                 .tile => |_| {
@@ -319,7 +319,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 .flags => |flags| {
                     switch (flags.circuit) {
                         .Source => {
-                            try nodes.append(.{ .kind = .Source, .coord = .{ x, y } });
+                            try nodes.append(.{ .kind = .Source, .coord = Coord.init(.{ x, y }) });
                             sources.append(coordinate);
                         },
                         .Plug => {
@@ -336,9 +336,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
         }
     }
 
-    var visited = std.AutoHashMap(Coordinate, void).init(alloc);
+    var visited = std.AutoHashMap(Coord, void).init(alloc);
     defer visited.deinit();
-    var multi_input = std.AutoHashMap(Coordinate, usize).init(alloc);
+    var multi_input = std.AutoHashMap(Coord, usize).init(alloc);
     defer multi_input.deinit();
 
     var bfs_queue = Queue{};
@@ -356,32 +356,25 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
             if (visited.contains(coord)) continue;
             try visited.put(coord, .{});
             // TODO remove magic numbers
-            const LEVELSIZE = 20;
-            const world_x = @intCast(i8, @divFloor(coord[0], LEVELSIZE));
-            const world_y = @intCast(i8, @divFloor(coord[1], LEVELSIZE));
-            const id: u16 = @bitCast(u8, world_x) | @intCast(u16, @bitCast(u8, world_y)) << 8;
+            const worldc = coord.toWorld();
+            const id: u16 = @bitCast(u8, worldc[0]) | @intCast(u16, @bitCast(u8, worldc[1])) << 8;
             // const level_opt: ?world.Level = level_hashmap.get(.{ world_x, world_y });
             if (level_hashmap.getPtr(id) != null) {
                 const level = level_hashmap.getPtr(id);
-                const level_x = @intCast(i16, world_x) * LEVELSIZE;
-                const level_y = @intCast(i16, world_y) * LEVELSIZE;
-                const i = @intCast(usize, (coord[0] - level_x) + (coord[1] - level_y) * @intCast(i16, level.?.width));
                 const last_node = node.data.last_node;
                 var next_node = last_node;
 
-                const tile = level.?.tiles.?[i];
+                const tile = level.?.getTile(coord).?;
 
                 if (tile != .flags) continue;
                 const flags = tile.flags;
 
                 switch (flags.circuit) {
-                    .Conduit => {
+                    .Source, .Conduit => {
                         // Collects from two other nodes. Needs to store more info in coordinate queue
                         // TODO
                     },
-                    .Plug,
-                    .Source,
-                    => {
+                    .Plug => {
                         // These have already been added, so just continue the
                         // search
                         next_node = @intCast(u16, nodes.items.len);
@@ -414,11 +407,17 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         });
                     },
                     .Join => {
-                        next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{
-                            .kind = .{ .Join = last_node },
-                            .coord = coord,
-                        });
+                        const last_coord = node.data.last_coord.?;
+                        if (last_coord.toLevelTopLeft().eq(coord.toLevelTopLeft())) {
+                            std.log.warn("Join first side", .{});
+                        } else {
+                            std.log.warn("Join second side", .{});
+                            next_node = @intCast(u16, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .Join = last_node },
+                                .coord = coord,
+                            });
+                        }
                     },
                     .And => {
                         // TODO: verify And gate is properly connected. A source node
@@ -427,9 +426,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         const last_coord = node.data.last_coord.?;
                         const Side = enum { O, L, R };
                         const side: Side =
-                            if (last_coord[0] == coord[0] - 1)
+                            if (last_coord.val[0] == coord.val[0] - 1)
                             Side.L
-                        else if (last_coord[0] == coord[0] + 1)
+                        else if (last_coord.val[0] == coord.val[0] + 1)
                             Side.R
                         else
                             Side.O;
@@ -444,11 +443,13 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                     // std.log.warn("Filling right", .{});
                                     nodes.items[a].kind.And[1] = last_node;
                                 },
-                                else => {},// reverse connection
+                                else => {}, // reverse connection
                             }
                         } else {
                             _ = visited.remove(coord);
                             if (side == .O) {
+                                // TODO: reverse the path, since the search path
+                                // may have come from a plug
                                 return error.OutputToSource;
                             } else if (side == .L) {
                                 next_node = @intCast(u16, nodes.items.len);
@@ -471,9 +472,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         const last_coord = node.data.last_coord.?;
                         const Side = enum { O, L, R };
                         const side: Side =
-                            if (last_coord[0] == coord[0] - 1)
+                            if (last_coord.val[0] == coord.val[0] - 1)
                             Side.L
-                        else if (last_coord[0] == coord[0] + 1)
+                        else if (last_coord.val[0] == coord.val[0] + 1)
                             Side.R
                         else
                             Side.O;
@@ -488,11 +489,13 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                     // std.log.warn("Filling right", .{});
                                     nodes.items[a].kind.Xor[1] = last_node;
                                 },
-                                else => {},// reverse connection
+                                else => {}, // reverse connection
                             }
                         } else {
                             _ = visited.remove(coord);
                             if (side == .O) {
+                                // TODO: reverse the path, since the search path
+                                // may have come from a plug
                                 return error.OutputToSource;
                             } else if (side == .L) {
                                 next_node = @intCast(u16, nodes.items.len);
@@ -520,22 +523,22 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                 right.* = Node{ .data = .{
                     .last_node = next_node,
-                    .coord = .{ coord[0] + 1, coord[1] },
+                    .coord = coord.add(.{ 1, 0 }),
                     .last_coord = coord,
                 } };
                 left.* = Node{ .data = .{
                     .last_node = next_node,
-                    .coord = .{ coord[0] - 1, coord[1] },
+                    .coord = coord.add(.{ -1, 0 }),
                     .last_coord = coord,
                 } };
                 down.* = Node{ .data = .{
                     .last_node = next_node,
-                    .coord = .{ coord[0], coord[1] + 1 },
+                    .coord = coord.add(.{ 0, 1 }),
                     .last_coord = coord,
                 } };
                 up.* = Node{ .data = .{
                     .last_node = next_node,
-                    .coord = .{ coord[0], coord[1] - 1 },
+                    .coord = coord.add(.{ 0, -1 }),
                     .last_coord = coord,
                 } };
 
