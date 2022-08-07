@@ -539,6 +539,7 @@ const NodeID = u16;
 pub const CircuitNode = struct {
     energized: bool = false,
     kind: NodeKind,
+    coord: [2]i16,
 };
 
 pub const NodeKind = union(enum) {

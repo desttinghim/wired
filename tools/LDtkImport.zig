@@ -77,7 +77,7 @@ fn make(step: *std.build.Step) !void {
     defer circuit.deinit();
     // TODO
     for (circuit.items) |node, i| {
-        std.log.warn("[{}]: {}", .{ i, node.kind });
+        std.log.warn("[{}]: {s} {any}", .{ i, @tagName(node.kind), node.coord });
     }
 
     // Calculate the offset of each level and store it in the headers.
@@ -301,13 +301,16 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
         try level_hashmap.put(id, level);
 
         // Use a global coordinate system for our algorithm
-        const world_x = @intCast(i16, level.world_x);
-        const world_y = @intCast(i16, level.world_y);
+        const world_x = @intCast(i16, level.world_x) * 20;
+        const world_y = @intCast(i16, level.world_y) * 20;
         for (level.tiles orelse continue) |tileData, i| {
             const x = world_x + @intCast(i16, @mod(i, level.width));
             const y = world_y + @intCast(i16, @divTrunc(i, level.width));
             const coordinate = try alloc.create(Node);
-            coordinate.* = .{ .data = .{ .last_node = @intCast(u16, nodes.items.len), .coord = .{ x, y } } };
+            coordinate.* = .{ .data = .{
+                .last_node = @intCast(u16, nodes.items.len),
+                .coord = .{ x, y },
+            } };
             switch (tileData) {
                 .tile => |_| {
                     // Do nothing
@@ -315,13 +318,14 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 .flags => |flags| {
                     switch (flags.circuit) {
                         .Source => {
-                            try nodes.append(.{ .kind = .Source });
+                            try nodes.append(.{ .kind = .Source, .coord = .{ x, y } });
                             sources.append(coordinate);
                         },
-                        // .Plug => {
-                        //     try nodes.append(.{ .kind = .{ .Plug = null } });
-                        //     plugs.append(coordinate);
-                        // },
+                        .Plug => {
+                            // try nodes.append(.{ .kind = .{ .Plug = null } });
+                            coordinate.data.last_node = 20000;
+                            plugs.append(coordinate);
+                        },
                         else => {
                             // Do nothing
                         },
@@ -349,8 +353,8 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
             try visited.put(coord, .{});
             // TODO remove magic numbers
             const LEVELSIZE = 20;
-            const world_x = @intCast(i8, @divTrunc(coord[0], LEVELSIZE));
-            const world_y = @intCast(i8, @divTrunc(coord[1], LEVELSIZE));
+            const world_x = @intCast(i8, @divFloor(coord[0], LEVELSIZE));
+            const world_y = @intCast(i8, @divFloor(coord[1], LEVELSIZE));
             const id: u16 = @bitCast(u8, world_x) | @intCast(u16, @bitCast(u8, world_y)) << 8;
             // const level_opt: ?world.Level = level_hashmap.get(.{ world_x, world_y });
             if (level_hashmap.getPtr(id) != null) {
@@ -376,37 +380,59 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     => {
                         // These have already been added, so just continue the
                         // search
-                        // try nodes.append(.{.kind = .{.Plug = null}});
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{
+                            .kind = .{ .Plug = null },
+                            .coord = coord,
+                        });
                     },
                     .Outlet => {
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .Outlet = last_node } });
+                        try nodes.append(.{
+                            .kind = .{ .Outlet = last_node },
+                            .coord = coord,
+                        });
                     },
                     .Switch_Off => {
                         // TODO: Find last coordinate of search and determine flow
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .Switch = .Off } });
+                        try nodes.append(.{
+                            .kind = .{ .Switch = .Off },
+                            .coord = coord,
+                        });
                     },
                     .Switch_On => {
                         // TODO: Find last coordinate of search and determine flow
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .Switch = .Off } });
+                        try nodes.append(.{
+                            .kind = .{ .Switch = .Off },
+                            .coord = coord,
+                        });
                     },
                     .Join => {
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .Join = last_node } });
+                        try nodes.append(.{
+                            .kind = .{ .Join = last_node },
+                            .coord = coord,
+                        });
                     },
                     .And => {
                         // TODO: verify And gate is properly connected. A source node
                         // should never feed directly into an And gate output. Inputs
                         // should be to the left and right.
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .And = .{ last_node, last_node } } });
+                        try nodes.append(.{
+                            .kind = .{ .And = .{ last_node, last_node } },
+                            .coord = coord,
+                        });
                     },
                     .Xor => {
                         // TODO: verify Xor gate is properly connected
                         next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{ .kind = .{ .Xor = .{ last_node, last_node } } });
+                        try nodes.append(.{
+                            .kind = .{ .Xor = .{ last_node, last_node } },
+                            .coord = coord,
+                        });
                     },
                     else => continue,
                 }
