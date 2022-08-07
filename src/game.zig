@@ -808,7 +808,6 @@ fn controlProcess(time: usize, pos: *Pos, control: *Control, physics: *Physics, 
             control.state = .stand;
         }
     } else if (kinematic.move[1] > 0 and !approxEqAbs(f32, kinematic.lastCol[0], 0, 0.01) and approxEqAbs(f32, kinematic.lastCol[1], 0, 0.01)) {
-        // w4.trace("{}, {}", .{ kinematic.move, kinematic.lastCol });
         if (kinematic.lastCol[0] > 0 and input.btnp(.one, .one)) delta = Vec2f{ -10, -15 };
         if (kinematic.lastCol[0] < 0 and input.btnp(.one, .one)) delta = Vec2f{ 10, -15 };
         physics.gravity = Vec2f{ 0, 0.05 };

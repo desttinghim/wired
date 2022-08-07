@@ -112,13 +112,16 @@ pub const TileData = union(enum) {
     tile: u7,
     flags: struct {
         solid: bool,
-        circuit: u4,
+        circuit: CircuitType,
     },
 
     pub fn toByte(data: TileData) u8 {
         switch (data) {
             .tile => |int| return 0b1000_0000 | @intCast(u8, int),
-            .flags => |flags| return (@intCast(u7, @boolToInt(flags.solid))) | (@intCast(u7, flags.circuit) << 1),
+            .flags => |flags| {
+                const circuit = @enumToInt(flags.circuit);
+                return (@intCast(u7, @boolToInt(flags.solid))) | (@intCast(u7, circuit) << 1);
+            },
         }
     }
 
@@ -132,7 +135,7 @@ pub const TileData = union(enum) {
             const circuit = @intCast(u4, (0b0001_1110 & byte) >> 1);
             return TileData{ .flags = .{
                 .solid = is_solid,
-                .circuit = circuit,
+                .circuit = @intToEnum(CircuitType, circuit),
             } };
         }
     }
@@ -534,22 +537,28 @@ pub const Database = struct {
 const NodeID = u16;
 
 pub const CircuitNode = struct {
-    energized: bool,
+    energized: bool = false,
     kind: NodeKind,
-    inputs: []usize,
-
-    // pub fn write_header(node: CircuitNode, writer: anytype) !void {
-    //     try writer.writeInt(u16, )
-    // }
 };
 
 pub const NodeKind = union(enum) {
-    /// An And logic gate,
+    /// An And logic gate
     And: [2]NodeID,
+    /// A Xor logic gate
+    Xor: [2]NodeID,
     /// This node is a source of power
     Source,
-    /// This node has no logic but can pass it on from another source
-    Conduit: NodeID,
-    /// This node represents a physical plug in the game world
-    Plug: NodeID,
+    /// Connects multiple nodes
+    Conduit: [2]NodeID,
+    /// This node represents a physical plug in the game world. The
+    /// NodeID points to another plug, if connected
+    Plug: ?NodeID,
+    /// A switch can be in one of five states, though only
+    /// two apply to any one switch.
+    /// Vertical = Off or Top/Bottom, depending on flow
+    /// Horizontal =  Off or Left/Right, depending on flow
+    /// Tee = Top/Bottom or Left/Right, depending on flow
+    Switch: enum { Off, Bottom, Top, Left, Right },
+    Join: NodeID,
+    Outlet: NodeID,
 };

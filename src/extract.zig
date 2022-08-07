@@ -60,7 +60,7 @@ pub fn extractLevel(opt: Options) !void {
             },
             .flags => |flags| {
                 auto_map[i] = flags.solid;
-                circuit_map[i] = @intToEnum(CircuitType, flags.circuit);
+                circuit_map[i] = flags.circuit;
             },
         }
     }

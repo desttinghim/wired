@@ -73,6 +73,13 @@ fn make(step: *std.build.Step) !void {
         allocator.free(level.entities.?);
     };
 
+    var circuit = try buildCircuit(allocator, levels.items);
+    defer circuit.deinit();
+    // TODO
+    for (circuit.items) |node, i| {
+        std.log.warn("[{}]: {}", .{ i, node.kind });
+    }
+
     // Calculate the offset of each level and store it in the headers.
     // Offset is relative to the beginning of level.data
     var level_headers = std.ArrayList(world.LevelHeader).init(allocator);
@@ -158,6 +165,8 @@ fn parseLevel(opt: struct {
                     kind_opt = .Trapdoor;
                 }
 
+                // Parsing code for wire entities. They're a little more complex
+                // than the rest
                 if (kind_opt) |kind| {
                     if (kind != .WireNode) {
                         const world_entity = world.Entity{
@@ -261,10 +270,176 @@ fn parseLevel(opt: struct {
         if (col == 0 or col == 1) {
             tiles[i] = world.TileData{ .flags = .{
                 .solid = col == 1,
-                .circuit = cir,
+                .circuit = @intToEnum(world.CircuitType, cir),
             } };
         }
     }
 
     return parsed_level;
+}
+
+pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayList(world.CircuitNode) {
+    const Coordinate = [2]i16;
+    const SearchItem = struct {
+        coord: Coordinate,
+        last_node: u16,
+    };
+    const Queue = std.TailQueue(SearchItem);
+    const Node = Queue.Node;
+
+    var nodes = std.ArrayList(world.CircuitNode).init(alloc);
+
+    var sources = Queue{};
+    var plugs = Queue{};
+
+    var level_hashmap = std.AutoHashMap(u16, world.Level).init(alloc);
+    defer level_hashmap.deinit();
+
+    for (levels) |level| {
+        const id: u16 = @bitCast(u8, level.world_x) | @intCast(u16, @bitCast(u8, level.world_y)) << 8;
+        // So we can quickly find levels
+        try level_hashmap.put(id, level);
+
+        // Use a global coordinate system for our algorithm
+        const world_x = @intCast(i16, level.world_x);
+        const world_y = @intCast(i16, level.world_y);
+        for (level.tiles orelse continue) |tileData, i| {
+            const x = world_x + @intCast(i16, @mod(i, level.width));
+            const y = world_y + @intCast(i16, @divTrunc(i, level.width));
+            const coordinate = try alloc.create(Node);
+            coordinate.* = .{ .data = .{ .last_node = @intCast(u16, nodes.items.len), .coord = .{ x, y } } };
+            switch (tileData) {
+                .tile => |_| {
+                    // Do nothing
+                },
+                .flags => |flags| {
+                    switch (flags.circuit) {
+                        .Source => {
+                            try nodes.append(.{ .kind = .Source });
+                            sources.append(coordinate);
+                        },
+                        // .Plug => {
+                        //     try nodes.append(.{ .kind = .{ .Plug = null } });
+                        //     plugs.append(coordinate);
+                        // },
+                        else => {
+                            // Do nothing
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    var visited = std.AutoHashMap(Coordinate, void).init(alloc);
+
+    var bfs_queue = Queue{};
+
+    var run: usize = 0;
+    while (run < 2) : (run += 1) {
+        if (run == 0) bfs_queue.concatByMoving(&sources);
+        if (run == 1) bfs_queue.concatByMoving(&plugs);
+        // bfs_queue.concatByMoving(&outlets);
+
+        while (bfs_queue.popFirst()) |node| {
+            // Make sure we clean up the node's memory
+            defer alloc.destroy(node);
+            const coord = node.data.coord;
+            if (visited.contains(coord)) continue;
+            try visited.put(coord, .{});
+            // TODO remove magic numbers
+            const LEVELSIZE = 20;
+            const world_x = @intCast(i8, @divTrunc(coord[0], LEVELSIZE));
+            const world_y = @intCast(i8, @divTrunc(coord[1], LEVELSIZE));
+            const id: u16 = @bitCast(u8, world_x) | @intCast(u16, @bitCast(u8, world_y)) << 8;
+            // const level_opt: ?world.Level = level_hashmap.get(.{ world_x, world_y });
+            if (level_hashmap.getPtr(id) != null) {
+                const level = level_hashmap.getPtr(id);
+                const level_x = @intCast(i16, world_x) * LEVELSIZE;
+                const level_y = @intCast(i16, world_y) * LEVELSIZE;
+                const i = @intCast(usize, (coord[0] - level_x) + (coord[1] - level_y) * @intCast(i16, level.?.width));
+                const last_node = node.data.last_node;
+                var next_node = last_node;
+
+                const tile = level.?.tiles.?[i];
+
+                if (tile != .flags) continue;
+                const flags = tile.flags;
+
+                switch (flags.circuit) {
+                    .Conduit => {
+                        // Collects from two other nodes. Needs to store more info in coordinate queue
+                        // TODO
+                    },
+                    .Plug,
+                    .Source,
+                    => {
+                        // These have already been added, so just continue the
+                        // search
+                        // try nodes.append(.{.kind = .{.Plug = null}});
+                    },
+                    .Outlet => {
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .Outlet = last_node } });
+                    },
+                    .Switch_Off => {
+                        // TODO: Find last coordinate of search and determine flow
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .Switch = .Off } });
+                    },
+                    .Switch_On => {
+                        // TODO: Find last coordinate of search and determine flow
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .Switch = .Off } });
+                    },
+                    .Join => {
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .Join = last_node } });
+                    },
+                    .And => {
+                        // TODO: verify And gate is properly connected. A source node
+                        // should never feed directly into an And gate output. Inputs
+                        // should be to the left and right.
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .And = .{ last_node, last_node } } });
+                    },
+                    .Xor => {
+                        // TODO: verify Xor gate is properly connected
+                        next_node = @intCast(u16, nodes.items.len);
+                        try nodes.append(.{ .kind = .{ .Xor = .{ last_node, last_node } } });
+                    },
+                    else => continue,
+                }
+
+                const right = try alloc.create(Node);
+                const left = try alloc.create(Node);
+                const down = try alloc.create(Node);
+                const up = try alloc.create(Node);
+
+                right.* = Node{ .data = .{
+                    .last_node = next_node,
+                    .coord = .{ coord[0] + 1, coord[1] },
+                } };
+                left.* = Node{ .data = .{
+                    .last_node = next_node,
+                    .coord = .{ coord[0] - 1, coord[1] },
+                } };
+                down.* = Node{ .data = .{
+                    .last_node = next_node,
+                    .coord = .{ coord[0], coord[1] + 1 },
+                } };
+                up.* = Node{ .data = .{
+                    .last_node = next_node,
+                    .coord = .{ coord[0], coord[1] - 1 },
+                } };
+
+                bfs_queue.append(right);
+                bfs_queue.append(left);
+                bfs_queue.append(down);
+                bfs_queue.append(up);
+            }
+        }
+    }
+
+    return nodes;
 }
