@@ -77,7 +77,7 @@ fn make(step: *std.build.Step) !void {
     defer circuit.deinit();
     // TODO
     for (circuit.items) |node, i| {
-        std.log.warn("[{}]: {s} {any}", .{ i, @tagName(node.kind), node.coord });
+        std.log.warn("[{:0>2}]: {s:<10} {any}\t\t{}", .{ i, @tagName(node.kind), node.coord, node.kind });
     }
 
     // Calculate the offset of each level and store it in the headers.
@@ -282,6 +282,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
     const Coordinate = [2]i16;
     const SearchItem = struct {
         coord: Coordinate,
+        last_coord: ?Coordinate = null,
         last_node: u16,
     };
     const Queue = std.TailQueue(SearchItem);
@@ -336,6 +337,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
     }
 
     var visited = std.AutoHashMap(Coordinate, void).init(alloc);
+    defer visited.deinit();
+    var multi_input = std.AutoHashMap(Coordinate, usize).init(alloc);
+    defer multi_input.deinit();
 
     var bfs_queue = Queue{};
 
@@ -420,11 +424,47 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // TODO: verify And gate is properly connected. A source node
                         // should never feed directly into an And gate output. Inputs
                         // should be to the left and right.
-                        next_node = @intCast(u16, nodes.items.len);
-                        try nodes.append(.{
-                            .kind = .{ .And = .{ last_node, last_node } },
-                            .coord = coord,
-                        });
+                        const last_coord = node.data.last_coord.?;
+                        const Side = enum { O, L, R };
+                        const side: Side =
+                            if (last_coord[0] == coord[0] - 1)
+                            Side.L
+                        else if (last_coord[0] == coord[0] + 1)
+                            Side.R
+                        else
+                            Side.O;
+                        // std.log.warn("{any}: {}", .{ coord, side });
+                        if (multi_input.get(coord)) |a| {
+                            switch (side) {
+                                .L => {
+                                    // std.log.warn("Filling left", .{});
+                                    nodes.items[a].kind.And[0] = last_node;
+                                },
+                                .R => {
+                                    // std.log.warn("Filling right", .{});
+                                    nodes.items[a].kind.And[1] = last_node;
+                                },
+                                else => {},// reverse connection
+                            }
+                        } else {
+                            _ = visited.remove(coord);
+                            if (side == .O) {
+                                return error.OutputToSource;
+                            } else if (side == .L) {
+                                next_node = @intCast(u16, nodes.items.len);
+                                try nodes.append(.{
+                                    .kind = .{ .And = .{ last_node, 20000 } },
+                                    .coord = coord,
+                                });
+                            } else if (side == .R) {
+                                next_node = @intCast(u16, nodes.items.len);
+                                try nodes.append(.{
+                                    .kind = .{ .And = .{ 20000, last_node } },
+                                    .coord = coord,
+                                });
+                            }
+                            try multi_input.put(coord, next_node);
+                        }
                     },
                     .Xor => {
                         // TODO: verify Xor gate is properly connected
@@ -445,18 +485,22 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 right.* = Node{ .data = .{
                     .last_node = next_node,
                     .coord = .{ coord[0] + 1, coord[1] },
+                    .last_coord = coord,
                 } };
                 left.* = Node{ .data = .{
                     .last_node = next_node,
                     .coord = .{ coord[0] - 1, coord[1] },
+                    .last_coord = coord,
                 } };
                 down.* = Node{ .data = .{
                     .last_node = next_node,
                     .coord = .{ coord[0], coord[1] + 1 },
+                    .last_coord = coord,
                 } };
                 up.* = Node{ .data = .{
                     .last_node = next_node,
                     .coord = .{ coord[0], coord[1] - 1 },
+                    .last_coord = coord,
                 } };
 
                 bfs_queue.append(right);
@@ -464,6 +508,22 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 bfs_queue.append(down);
                 bfs_queue.append(up);
             }
+        }
+    }
+
+    var i: usize = 0;
+    while (i < nodes.items.len) : (i += 1) {
+        switch (nodes.items[i].kind) {
+            // .Source => {
+            // },
+            .And => {},
+            .Xor => {},
+            .Conduit => {},
+            .Plug => {},
+            .Switch => {},
+            .Join => {},
+            .Outlet => {},
+            else => {},
         }
     }
 
