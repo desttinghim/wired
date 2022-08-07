@@ -167,6 +167,10 @@ pub const Coordinate = struct {
         return .{ .val = .{ coord.val[0] + val[0], coord.val[1] + val[1] } };
     }
 
+    pub fn addC(coord: Coordinate, other: Coordinate) Coordinate {
+        return .{ .val = .{ coord.val[0] + other.val[0], coord.val[1] + other.val[1] } };
+    }
+
     pub fn eq(coord: Coordinate, other: Coordinate) bool {
         return coord.val[0] == other.val[0] and coord.val[1] == other.val[1];
     }
@@ -175,6 +179,13 @@ pub const Coordinate = struct {
         const world_x = @intCast(i8, @divFloor(coord.val[0], LEVELSIZE));
         const world_y = @intCast(i8, @divFloor(coord.val[1], LEVELSIZE));
         return .{ world_x, world_y };
+    }
+
+    pub fn fromWorld(x: i8, y: i8) Coordinate {
+        return .{ .val = .{
+            @intCast(i16, x) * 20,
+            @intCast(i16, y) * 20,
+        } };
     }
 
     pub fn toLevelTopLeft(coord: Coordinate) Coordinate {
@@ -533,7 +544,6 @@ pub const Database = struct {
     level_info: []LevelHeader,
     circuit_info: []CircuitNode,
     level_data_begin: usize,
-    // circuit_data_begin: usize,
 
     const world_data = @embedFile(@import("world_data").path);
 
@@ -603,6 +613,25 @@ pub const Database = struct {
             }
         }
         return null;
+    }
+
+    pub fn connectPlugs(db: *Database, p1: Coord, p2: Coord) void {
+        var opt1: ?usize = null;
+        var opt2: ?usize = null;
+        for (db.circuit_info) |node, i| {
+            if (!p1.eq(node.coord) or !p2.eq(node.coord)) continue;
+            if (p1.eq(node.coord)) opt1 = i else opt2 = i;
+        }
+        var w1 = db.circuit_info[opt1 orelse return];
+        var w2 = db.circuit_info[opt2 orelse return];
+
+        if (w1.energized and !w2.energized) {
+            w2.energized = true;
+            w2.kind.Plug = @intCast(NodeID, opt1.?);
+        } else if (w2.energized and !w1.energized) {
+            w1.energized = true;
+            w1.kind.Plug = @intCast(NodeID, opt2.?);
+        }
     }
 };
 
@@ -710,8 +739,7 @@ pub const NodeKind = union(NodeEnum) {
                 } };
             },
             .Plug => {
-                const plug =
-                    try reader.readInt(NodeID, .Little);
+                const plug = try reader.readInt(NodeID, .Little);
                 if (plug == std.math.maxInt(NodeID)) {
                     kind = .{ .Plug = null };
                 } else {

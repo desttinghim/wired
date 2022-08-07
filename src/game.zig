@@ -653,6 +653,19 @@ fn updateCircuit() !void {
         const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
+
+        const Coord = world.Coordinate;
+        const topleft = Coord.fromWorld( level.world_x, level.world_y );
+        const p1 = Coord.init(.{
+            @intCast(i16, cellBegin[0]),
+            @intCast(i16, cellBegin[1]),
+        }).addC(topleft);
+        const p2 = Coord.init(.{
+            @intCast(i16, cellEnd[0]),
+            @intCast(i16, cellEnd[1]),
+        }).addC(topleft);
+
+        db.connectPlugs(p1, p2);
     }
 
     // Simulate circuit
@@ -681,6 +694,8 @@ fn updateCircuit() !void {
     for (enabledDoors.items) |door| {
         try map.set_cell(door, world.Tiles.Empty);
     }
+
+
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {
