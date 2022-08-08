@@ -427,22 +427,19 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         std.debug.assert(north == true and south == true);
 
                         // Determine initial state of switch
-                        const state: world.NodeKind.SwitchEnum = state: {
+                        const state: u8 = state: {
                             // Vertical switch
                             if (!west and !east) {
-                                if (flags.circuit == .Switch_Off) break :state .Off;
-                                if (input_dir == .North) break :state .South;
-                                break :state .North;
+                                if (flags.circuit == .Switch_Off) break :state 0;
+                                break :state 1;
                             }
                             if (east and !west) {
-                                if (flags.circuit == .Switch_Off) break :state .East;
-                                if (input_dir == .North) break :state .South;
-                                break :state .North;
+                                if (flags.circuit == .Switch_Off) break :state 0;
+                                break :state 1;
                             }
                             if (west and !east) {
-                                if (flags.circuit == .Switch_Off) break :state .West;
-                                if (input_dir == .North) break :state .South;
-                                break :state .North;
+                                if (flags.circuit == .Switch_Off) break :state 0;
+                                break :state 1;
                             }
                             return error.ImpossibleSwitchState;
                         };
@@ -461,7 +458,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
-                                    .which = .West,
+                                    .which = 0,
                                 } },
                                 .coord = coord,
                             });
@@ -479,7 +476,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
-                                    .which = .East,
+                                    .which = 0,
                                 } },
                                 .coord = coord,
                             });
@@ -497,7 +494,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
-                                    .which = .South,
+                                    .which = 1,
                                 } },
                                 .coord = coord,
                             });
@@ -515,7 +512,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
-                                    .which = .North,
+                                    .which = 1,
                                 } },
                                 .coord = coord,
                             });

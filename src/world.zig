@@ -675,8 +675,7 @@ pub const Database = struct {
         }
     }
 
-
-    pub fn setSwitch(db: *Database, coord: Coord, new_state: NodeKind.SwitchEnum) void {
+    pub fn setSwitch(db: *Database, coord: Coord, new_state: u8) void {
         const _switch = db.getNodeID(coord) orelse return;
         db.circuit_info[_switch].kind.Switch.state = new_state;
     }
@@ -689,53 +688,68 @@ pub const Database = struct {
         return false;
     }
 
-    pub fn updateCircuit(db: *Database) void {
-        for (db.circuit_info) |node, i| {
-            switch (node.kind) {
-                .And => |And| {
-                    const input1 = db.circuit_info[And[0]].energized;
-                    const input2 = db.circuit_info[And[1]].energized;
-                    db.circuit_info[i].energized = (input1 and input2);
-                },
-                .Xor => |Xor| {
-                    const input1 = db.circuit_info[Xor[0]].energized;
-                    const input2 = db.circuit_info[Xor[1]].energized;
-                    db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
-                },
-                .Source => db.circuit_info[i].energized = true,
-                .Conduit => |Conduit| {
-                    const input1 = db.circuit_info[Conduit[0]].energized;
-                    const input2 = db.circuit_info[Conduit[1]].energized;
-                    db.circuit_info[i].energized = (input1 or input2);
-                },
-                .Socket => |socket_opt| {
-                    if (socket_opt) |input| {
-                        db.circuit_info[i].energized = db.circuit_info[input].energized;
-                    } else {
-                        db.circuit_info[i].energized = false;
-                    }
-                },
-                .Plug => |Plug| {
-                    db.circuit_info[i].energized = db.circuit_info[Plug].energized;
-                },
-                .Switch => |_Switch| {
-                    db.circuit_info[i].energized = db.circuit_info[_Switch.source].energized;
-                },
-                .SwitchOutlet => |_Switch| {
-                    const _switch = db.circuit_info[_Switch.source];
-                    const _outlet = db.circuit_info[i].kind.SwitchOutlet;
-                    // If the switch isn't energized, this outlet is not energized
-                    if (!_switch.energized) db.circuit_info[i].energized = false;
-                    // If the switch is energized, check that it is outputting to this outlet
-                    db.circuit_info[i].energized = _outlet.which == _switch.kind.Switch.state;
-                },
-                .Join => |Join| {
-                    db.circuit_info[i].energized = db.circuit_info[Join].energized;
-                },
-                .Outlet => |Outlet| {
-                    db.circuit_info[i].energized = db.circuit_info[Outlet].energized;
-                },
-            }
+    fn updateCircuitFragment(db: *Database, i: usize, visited: []bool) bool {
+        if (visited[i]) return db.circuit_info[i].energized;
+        visited[i] = true;
+        const node = db.circuit_info[i];
+        switch (node.kind) {
+            .And => |And| {
+                const input1 = db.updateCircuitFragment(And[0], visited);
+                const input2 = db.updateCircuitFragment(And[1], visited);
+                db.circuit_info[i].energized = (input1 and input2);
+            },
+            .Xor => |Xor| {
+                const input1 = db.updateCircuitFragment(Xor[0], visited);
+                const input2 = db.updateCircuitFragment(Xor[1], visited);
+                db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
+            },
+            .Source => db.circuit_info[i].energized = true,
+            .Conduit => |Conduit| {
+                const input1 = db.updateCircuitFragment(Conduit[0], visited);
+                const input2 = db.updateCircuitFragment(Conduit[1], visited);
+                db.circuit_info[i].energized = (input1 or input2);
+            },
+            // TODO: Sockets may come before the plug they are connected to
+            .Socket => |socket_opt| {
+                if (socket_opt) |input| {
+                    db.circuit_info[i].energized = db.updateCircuitFragment(input, visited);
+                } else {
+                    db.circuit_info[i].energized = false;
+                }
+            },
+            .Plug => |Plug| {
+                db.circuit_info[i].energized = db.updateCircuitFragment(Plug, visited);
+            },
+            .Switch => |_Switch| {
+                db.circuit_info[i].energized = db.updateCircuitFragment(_Switch.source, visited);
+            },
+            .SwitchOutlet => |_Switch| {
+                const is_energized = db.updateCircuitFragment(_Switch.source, visited);
+                const _switch = db.circuit_info[_Switch.source].kind.Switch;
+                const _outlet = db.circuit_info[i].kind.SwitchOutlet;
+                // If the switch isn't energized, this outlet is not energized
+                if (is_energized) db.circuit_info[i].energized = false;
+                // If the switch is energized, check that it is outputting to this outlet
+                db.circuit_info[i].energized = _outlet.which == _switch.state;
+            },
+            .Join => |Join| {
+                db.circuit_info[i].energized = db.updateCircuitFragment(Join, visited);
+            },
+            .Outlet => |Outlet| {
+                db.circuit_info[i].energized = db.updateCircuitFragment(Outlet, visited);
+            },
+        }
+        return db.circuit_info[i].energized;
+    }
+
+    pub fn updateCircuit(db: *Database, alloc: std.mem.Allocator) !void {
+        var visited = try alloc.alloc(bool, db.circuit_info.len);
+        defer alloc.free(visited);
+        std.mem.set(bool, visited, false);
+        var i: usize = db.circuit_info.len - 1;
+        while (i > 0) : (i -|= 1) {
+            _ = db.updateCircuitFragment(i, visited);
+            if (i == 0) break;
         }
     }
 };
@@ -833,13 +847,12 @@ pub const NodeKind = union(NodeEnum) {
 
     pub const Switch = struct {
         source: NodeID,
-        state: SwitchEnum,
+        state: u8,
     };
     pub const SwitchOutlet = struct {
         source: NodeID,
-        which: SwitchEnum,
+        which: u8,
     };
-    pub const SwitchEnum = enum { Off, North, West, East, South };
 
     pub fn read(reader: anytype) !NodeKind {
         var kind: NodeKind = undefined;
@@ -878,13 +891,13 @@ pub const NodeKind = union(NodeEnum) {
             .Switch => {
                 kind = .{ .Switch = .{
                     .source = try reader.readInt(NodeID, .Little),
-                    .state = @intToEnum(SwitchEnum, try reader.readInt(u8, .Little)),
+                    .state = try reader.readInt(u8, .Little),
                 } };
             },
             .SwitchOutlet => {
                 kind = .{ .SwitchOutlet = .{
                     .source = try reader.readInt(NodeID, .Little),
-                    .which = @intToEnum(SwitchEnum, try reader.readInt(u8, .Little)),
+                    .which = try reader.readInt(u8, .Little),
                 } };
             },
             .Join => {
@@ -922,11 +935,11 @@ pub const NodeKind = union(NodeEnum) {
             },
             .Switch => |_Switch| {
                 try writer.writeInt(NodeID, _Switch.source, .Little);
-                try writer.writeInt(u8, @enumToInt(_Switch.state), .Little);
+                try writer.writeInt(u8, _Switch.state, .Little);
             },
             .SwitchOutlet => |_Switch| {
                 try writer.writeInt(NodeID, _Switch.source, .Little);
-                try writer.writeInt(u8, @enumToInt(_Switch.which), .Little);
+                try writer.writeInt(u8, _Switch.which, .Little);
             },
             .Join => |Join| {
                 try writer.writeInt(NodeID, Join, .Little);
@@ -948,8 +961,8 @@ pub const NodeKind = union(NodeEnum) {
             .Source => std.fmt.format(writer, "{s}", .{name}),
             .Plug => |Plug| std.fmt.format(writer, "{s} [{}]", .{ name, Plug }),
             .Socket => |Socket| std.fmt.format(writer, "{s} [{?}]", .{ name, Socket }),
-            .Switch => |_Switch| std.fmt.format(writer, "{s} <{s}> [{}]", .{ name, @tagName(_Switch.state), _Switch.source }),
-            .SwitchOutlet => |_Switch| std.fmt.format(writer, "{s} <{s}> [{}]", .{ name, @tagName(_Switch.which), _Switch.source }),
+            .Switch => |_Switch| std.fmt.format(writer, "{s} <{}> [{}]", .{ name, _Switch.state, _Switch.source }),
+            .SwitchOutlet => |_Switch| std.fmt.format(writer, "{s} <{}> [{}]", .{ name, _Switch.which, _Switch.source }),
             .Join => |Join| std.fmt.format(writer, "{s} [{}]", .{ name, Join }),
             .Outlet => |Outlet| std.fmt.format(writer, "{s} [{}]", .{ name, Outlet }),
         };

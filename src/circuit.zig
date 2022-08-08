@@ -236,7 +236,7 @@ pub fn toggle(this: *@This(), c: Cell) ?u8 {
         if (T.is_switch(tile)) {
             const toggled = toggle_switch(tile);
             this.set_cell(cell, toggled);
-            return tile;
+            return toggled;
         }
     }
     return null;

@@ -654,17 +654,13 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                     const new_switch = circuit.toggle(cell);
                     if (new_switch) |tile| {
                         const T = world.Tiles;
-                        // TODO: make switch system better
-                        const new_state: world.NodeKind.SwitchEnum = switch(tile) {
-                            T.SwitchTeeWestOn => .North,
-                            T.SwitchTeeWestOff => .West,
-                            T.SwitchTeeEastOn => .North,
-                            T.SwitchTeeEastOff => .East,
-                            T.SwitchVerticalOn => .South,
-                            else => .Off,
+                        const new_state: u8 = switch(tile) {
+                            T.SwitchTeeWestOn, T.SwitchTeeEastOn, T.SwitchVerticalOn => 1,
+                            else => 0,
                         };
                         const x = level.world_x * 20 + @intCast(i16, cell[0]);
                         const y = level.world_y * 20 + @intCast(i16, cell[1]);
+                        w4.tracef("---- Updating switch (%d, %d)", x, y);
                         db.setSwitch(Coord.init(.{ x, y }), new_state);
                     }
                     try updateCircuit();
@@ -729,7 +725,7 @@ fn updateCircuit() !void {
         try map.set_cell(door, world.Tiles.Empty);
     }
 
-    db.updateCircuit();
+    try db.updateCircuit(frame_alloc);
 
     for (db.circuit_info) |node, n| {
         const e = @boolToInt(node.energized);
