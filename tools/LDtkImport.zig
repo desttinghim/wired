@@ -371,13 +371,23 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // TODO
                     },
                     .Plug => {
-                        // These have already been added, so just continue the
-                        // search
-                        next_node = @intCast(world.NodeID, nodes.items.len);
-                        try nodes.append(.{
-                            .kind = .{ .Plug = null },
-                            .coord = coord,
-                        });
+                        if (last_node == std.math.maxInt(world.NodeID)) {
+                            next_node = @intCast(world.NodeID, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .Plug = null },
+                                .coord = coord,
+                            });
+                        } else {
+                            // This plug is connected directly to a circuit fragment
+                            // with a source, so we are at the end of the search along
+                            // this conduit path. Make the plug a jack instead, so it
+                            // looks at the last node instead of being null
+                            try nodes.append(.{
+                                .kind = .{ .Jack = last_node },
+                                .coord = coord,
+                            });
+                            continue;
+                        }
                     },
                     .Outlet => {
                         next_node = @intCast(world.NodeID, nodes.items.len);

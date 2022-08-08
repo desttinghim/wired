@@ -677,7 +677,11 @@ fn updateCircuit() !void {
             @intCast(i16, cellEnd[1]),
         }).addC(topleft);
 
-        db.connectPlugs(p1, p2);
+        w4.tracef("p1 %d, %d \t p2 %d, %d", p1.val[0], p1.val[1], p2.val[0], p2.val[1]);
+
+        db.connectPlugs(p1, p2) catch {
+            w4.tracef("connect plugs error");
+        };
     }
 
     // Simulate circuit
@@ -708,6 +712,23 @@ fn updateCircuit() !void {
     }
 
     db.updateCircuit();
+
+    for (db.circuit_info) |node, n| {
+        switch (node.kind) {
+            .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d]", n,  Conduit[0], Conduit[1]),
+            .And => |And| w4.tracef("[%d]: And [%d, %d]", n,  And[0], And[1]),
+            .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d]", n,  Xor[0], Xor[1]),
+            .Source => w4.tracef("[%d]: Source", n),
+            .Plug => |Plug| {
+                const plug = Plug orelse std.math.maxInt(world.NodeID);
+                w4.tracef("[%d]: Plug [%d]", n,  plug);
+            },
+            .Jack => |Jack| w4.tracef("[%d]: Jack [%d]", n,  Jack),
+            .Switch => |Switch| w4.tracef("[%d]: Switch [%s]", n,  &@tagName(Switch)),
+            .Join => |Join| w4.tracef("[%d]: Join [%d]", n,  Join),
+            .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d]", n,  Outlet),
+        }
+    }
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {

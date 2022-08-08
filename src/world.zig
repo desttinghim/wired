@@ -635,22 +635,24 @@ pub const Database = struct {
         return null;
     }
 
-    pub fn connectPlugs(db: *Database, p1: Coord, p2: Coord) void {
-        var opt1: ?usize = null;
-        var opt2: ?usize = null;
+    fn getNodeID(db: *Database, coord: Coord) ?NodeID {
         for (db.circuit_info) |node, i| {
-            if (!p1.eq(node.coord) or !p2.eq(node.coord)) continue;
-            if (p1.eq(node.coord)) opt1 = i else opt2 = i;
+            if (!coord.eq(node.coord)) continue;
+            return @intCast(NodeID, i);
         }
-        var plug1 = db.circuit_info[opt1 orelse return];
-        var plug2 = db.circuit_info[opt2 orelse return];
+        return null;
+    }
 
-        if (plug1.energized and !plug2.energized) {
-            plug2.energized = true;
-            plug2.kind.Plug = @intCast(NodeID, opt1.?);
-        } else if (plug2.energized and !plug1.energized) {
-            plug1.energized = true;
-            plug1.kind.Plug = @intCast(NodeID, opt2.?);
+    pub fn connectPlugs(db: *Database, p1: Coord, p2: Coord) !void {
+        const p1id = db.getNodeID(p1) orelse return;
+        const p2id = db.getNodeID(p2) orelse return;
+
+        if (db.circuit_info[p1id].kind == .Jack and db.circuit_info[p2id].kind == .Plug) {
+            db.circuit_info[p2id].kind.Plug = p1id;
+        } else if (db.circuit_info[p2id].kind == .Jack and db.circuit_info[p1id].kind == .Plug) {
+            db.circuit_info[p1id].kind.Plug = p2id;
+        } else if (db.circuit_info[p2id].kind == .Jack and db.circuit_info[p1id].kind == .Plug) {
+            return error.Unimplemented;
         }
     }
 
@@ -694,6 +696,9 @@ pub const Database = struct {
                     } else {
                         db.circuit_info[i].energized = false;
                     }
+                },
+                .Jack => |Jack| {
+                    db.circuit_info[i].energized = db.circuit_info[Jack].energized;
                 },
                 .Switch => |state| {
                     // TODO Rework switch to make sense
@@ -763,6 +768,7 @@ const NodeEnum = enum(u4) {
     Source,
     Conduit,
     Plug,
+    Jack,
     Switch,
     Join,
     Outlet,
@@ -780,6 +786,8 @@ pub const NodeKind = union(NodeEnum) {
     /// This node represents a physical plug in the game world. The
     /// NodeID points to another plug, if connected
     Plug: ?NodeID,
+    /// If a plug is connected to a circuit fragment with a source, it is a jack.
+    Jack: NodeID,
     /// A switch can be in one of five states, though only
     /// two apply to any one switch.
     /// Vertical = Off or Top/Bottom, depending on flow
@@ -822,6 +830,9 @@ pub const NodeKind = union(NodeEnum) {
                     kind = .{ .Plug = plug };
                 }
             },
+            .Jack => {
+                kind = .{ .Jack = try reader.readInt(NodeID, .Little) };
+            },
             .Switch => {
                 kind = .{
                     .Switch = @intToEnum(SwitchEnum, try reader.readInt(NodeID, .Little)),
@@ -857,6 +868,9 @@ pub const NodeKind = union(NodeEnum) {
                 const plug = Plug orelse std.math.maxInt(NodeID);
                 try writer.writeInt(NodeID, plug, .Little);
             },
+            .Jack => |Jack| {
+                try writer.writeInt(NodeID, Jack, .Little);
+            },
             .Switch => |Switch| {
                 try writer.writeInt(NodeID, @enumToInt(Switch), .Little);
             },
@@ -879,6 +893,7 @@ pub const NodeKind = union(NodeEnum) {
             .Xor => |Xor| std.fmt.format(writer, "{s} [{}, {}]", .{ name, Xor[0], Xor[1] }),
             .Source => std.fmt.format(writer, "{s}", .{name}),
             .Plug => |Plug| std.fmt.format(writer, "{s} [{?}]", .{ name, Plug }),
+            .Jack => |Jack| std.fmt.format(writer, "{s} [{}]", .{ name, Jack }),
             .Switch => |Switch| std.fmt.format(writer, "{s} [{s}]", .{ name, @tagName(Switch) }),
             .Join => |Join| std.fmt.format(writer, "{s} [{}]", .{ name, Join }),
             .Outlet => |Outlet| std.fmt.format(writer, "{s} [{}]", .{ name, Outlet }),
