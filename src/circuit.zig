@@ -230,14 +230,16 @@ pub fn isEnabled(this: @This(), cell: Cell) bool {
     return this.levels[i] >= 1;
 }
 
-pub fn toggle(this: *@This(), c: Cell) void {
+pub fn toggle(this: *@This(), c: Cell) ?u8 {
     const cell = c;
     if (this.get_cell(cell)) |tile| {
         if (T.is_switch(tile)) {
             const toggled = toggle_switch(tile);
             this.set_cell(cell, toggled);
+            return tile;
         }
     }
+    return null;
 }
 
 pub fn clearMap(this: *@This()) void {

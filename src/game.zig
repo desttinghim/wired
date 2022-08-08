@@ -651,7 +651,22 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                 },
                 .lever => {
                     const cell = @divTrunc(i.pos, Map.tile_size);
-                    circuit.toggle(cell);
+                    const new_switch = circuit.toggle(cell);
+                    if (new_switch) |tile| {
+                        const T = world.Tiles;
+                        // TODO: make switch system better
+                        const new_state: world.NodeKind.SwitchEnum = switch(tile) {
+                            T.SwitchTeeWestOn => .North,
+                            T.SwitchTeeWestOff => .West,
+                            T.SwitchTeeEastOn => .North,
+                            T.SwitchTeeEastOff => .East,
+                            T.SwitchVerticalOn => .South,
+                            else => .Off,
+                        };
+                        const x = level.world_x * 20 + @intCast(i16, cell[0]);
+                        const y = level.world_y * 20 + @intCast(i16, cell[1]);
+                        db.setSwitch(Coord.init(.{ x, y }), new_state);
+                    }
                     try updateCircuit();
                 },
             }
@@ -728,7 +743,8 @@ fn updateCircuit() !void {
                 w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
             },
             .Plug => |Plug| w4.tracef("[%d]: Plug [%d] <%d>", n, Plug, e),
-            .Switch => |Switch| w4.tracef("[%d]: Switch [%s] <%d>", n, &@tagName(Switch), e),
+            .Switch => |Switch| w4.tracef("[%d]: Switch %d [%d] <%d>", n, Switch.state, Switch.source, e),
+            .SwitchOutlet => |Switch| w4.tracef("[%d]: SwitchOutlet %d [%d] <%d>", n, Switch.which, Switch.source, e),
             .Join => |Join| w4.tracef("[%d]: Join [%d] <%d>", n, Join, e),
             .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d] <%d>", n, Outlet, e),
         }

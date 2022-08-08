@@ -367,7 +367,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 switch (flags.circuit) {
                     .Source => {}, // Do nothing, but add everything around the source
                     .Conduit => {
-                        // Collects from two other nodes. Needs to store more info in coordinate queue
+                        // Collects from two other nodes. Intersections will need to be stored so when
+                        // we find out we have to outputs, we can add the conduit and possible rewrite
+                        // previous nodes to point to the conduit
                         // TODO
                     },
                     .Socket => {
@@ -393,21 +395,139 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             .coord = coord,
                         });
                     },
-                    .Switch_Off => {
-                        // TODO: Find last coordinate of search and determine flow
+                    .Switch_Off, .Switch_On => {
+                        // Identify input side
+                        const last_coord = node.data.last_coord.?;
+                        const Dir = enum { North, West, East, South };
+                        const input_dir: Dir = dir: {
+                            if (last_coord.eq(coord.add(.{ 0, -1 }))) {
+                                break :dir .North;
+                            } else if (last_coord.eq(coord.add(.{ -1, 0 }))) {
+                                break :dir .West;
+                            } else if (last_coord.eq(coord.add(.{ 1, 0 }))) {
+                                break :dir .East;
+                            } else {
+                                break :dir .South;
+                            }
+                        };
+                        // Find outlets
+                        const north_opt = level.?.getTile(coord.add(.{ 0, -1 })).?.getCircuit();
+                        const west_opt = level.?.getTile(coord.add(.{ -1, 0 })).?.getCircuit();
+                        const east_opt = level.?.getTile(coord.add(.{ 1, 0 })).?.getCircuit();
+                        const south_opt = level.?.getTile(coord.add(.{ 0, 1 })).?.getCircuit();
+
+                        const north = (north_opt orelse world.CircuitType.None) != .None;
+                        const west = (west_opt orelse world.CircuitType.None) != .None;
+                        const east = (east_opt orelse world.CircuitType.None) != .None;
+                        const south = (south_opt orelse world.CircuitType.None) != .None;
+
+                        // We don't have four way switches, don't allow them
+                        std.debug.assert(west != true or east != true);
+                        // We only have vertically oriented switches ATM
+                        std.debug.assert(north == true and south == true);
+
+                        // Determine initial state of switch
+                        const state: world.NodeKind.SwitchEnum = state: {
+                            // Vertical switch
+                            if (!west and !east) {
+                                if (flags.circuit == .Switch_Off) break :state .Off;
+                                if (input_dir == .North) break :state .South;
+                                break :state .North;
+                            }
+                            if (east and !west) {
+                                if (flags.circuit == .Switch_Off) break :state .East;
+                                if (input_dir == .North) break :state .South;
+                                break :state .North;
+                            }
+                            if (west and !east) {
+                                if (flags.circuit == .Switch_Off) break :state .West;
+                                if (input_dir == .North) break :state .South;
+                                break :state .North;
+                            }
+                            return error.ImpossibleSwitchState;
+                        };
+                        // Add switch
                         next_node = @intCast(world.NodeID, nodes.items.len);
                         try nodes.append(.{
-                            .kind = .{ .Switch = .Off },
+                            .kind = .{ .Switch = .{
+                                .source = last_node,
+                                .state = state,
+                            } },
                             .coord = coord,
                         });
-                    },
-                    .Switch_On => {
-                        // TODO: Find last coordinate of search and determine flow
-                        next_node = @intCast(world.NodeID, nodes.items.len);
-                        try nodes.append(.{
-                            .kind = .{ .Switch = .Off },
-                            .coord = coord,
-                        });
+                        // Add switch outlets
+                        if (input_dir != .West and west) {
+                            const out_node = @intCast(world.NodeID, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .SwitchOutlet = .{
+                                    .source = next_node,
+                                    .which = .West,
+                                } },
+                                .coord = coord,
+                            });
+                            const right = try alloc.create(Node);
+                            right.* = Node{ .data = .{
+                                .last_node = out_node,
+                                .coord = coord.add(.{ 1, 0 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(right);
+                        }
+
+                        if (input_dir != .East and east) {
+                            const out_node = @intCast(world.NodeID, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .SwitchOutlet = .{
+                                    .source = next_node,
+                                    .which = .East,
+                                } },
+                                .coord = coord,
+                            });
+                            const left = try alloc.create(Node);
+                            left.* = Node{ .data = .{
+                                .last_node = out_node,
+                                .coord = coord.add(.{ -1, 0 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(left);
+                        }
+
+                        if (input_dir != .South and south) {
+                            const out_node = @intCast(world.NodeID, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .SwitchOutlet = .{
+                                    .source = next_node,
+                                    .which = .South,
+                                } },
+                                .coord = coord,
+                            });
+                            const down = try alloc.create(Node);
+                            down.* = Node{ .data = .{
+                                .last_node = out_node,
+                                .coord = coord.add(.{ 0, 1 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(down);
+                        }
+
+                        if (input_dir != .North and north) {
+                            const out_node = @intCast(world.NodeID, nodes.items.len);
+                            try nodes.append(.{
+                                .kind = .{ .SwitchOutlet = .{
+                                    .source = next_node,
+                                    .which = .North,
+                                } },
+                                .coord = coord,
+                            });
+                            const up = try alloc.create(Node);
+                            up.* = Node{ .data = .{
+                                .last_node = out_node,
+                                .coord = coord.add(.{ 0, -1 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(up);
+                        }
+                        continue;
                     },
                     .Join => {
                         const last_coord = node.data.last_coord.?;

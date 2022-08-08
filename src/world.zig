@@ -116,6 +116,16 @@ pub const TileData = union(enum) {
         circuit: CircuitType,
     },
 
+    pub fn getCircuit(data: TileData) ?CircuitType {
+        switch (data) {
+            .tile => |_| return null,
+            .flags => |flags| {
+                if (flags.circuit == .None) return null;
+                return flags.circuit;
+            },
+        }
+    }
+
     pub fn toByte(data: TileData) u8 {
         switch (data) {
             .tile => |int| return 0b1000_0000 | @intCast(u8, int),
@@ -665,6 +675,12 @@ pub const Database = struct {
         }
     }
 
+
+    pub fn setSwitch(db: *Database, coord: Coord, new_state: NodeKind.SwitchEnum) void {
+        const _switch = db.getNodeID(coord) orelse return;
+        db.circuit_info[_switch].kind.Switch.state = new_state;
+    }
+
     pub fn isEnergized(db: *Database, coord: Coord) bool {
         for (db.circuit_info) |node, i| {
             if (!coord.eq(node.coord)) continue;
@@ -702,10 +718,16 @@ pub const Database = struct {
                 .Plug => |Plug| {
                     db.circuit_info[i].energized = db.circuit_info[Plug].energized;
                 },
-                .Switch => |state| {
-                    // TODO Rework switch to make sense
-                    db.circuit_info[i].energized = false;
-                    _ = state;
+                .Switch => |_Switch| {
+                    db.circuit_info[i].energized = db.circuit_info[_Switch.source].energized;
+                },
+                .SwitchOutlet => |_Switch| {
+                    const _switch = db.circuit_info[_Switch.source];
+                    const _outlet = db.circuit_info[i].kind.SwitchOutlet;
+                    // If the switch isn't energized, this outlet is not energized
+                    if (!_switch.energized) db.circuit_info[i].energized = false;
+                    // If the switch is energized, check that it is outputting to this outlet
+                    db.circuit_info[i].energized = _outlet.which == _switch.kind.Switch.state;
                 },
                 .Join => |Join| {
                     db.circuit_info[i].energized = db.circuit_info[Join].energized;
@@ -772,6 +794,7 @@ const NodeEnum = enum(u4) {
     Plug,
     Socket,
     Switch,
+    SwitchOutlet,
     Join,
     Outlet,
 };
@@ -798,11 +821,25 @@ pub const NodeKind = union(NodeEnum) {
     /// Vertical = Off or Top/Bottom, depending on flow
     /// Horizontal =  Off or Left/Right, depending on flow
     /// Tee = Top/Bottom or Left/Right, depending on flow
-    Switch: SwitchEnum,
+    Switch: Switch,
+    /// Interface between a switch and other components. Each one
+    /// of these represents a possible outlet on a switch, and reads
+    /// the state of the switch to determine if it is powered or not
+    SwitchOutlet: SwitchOutlet,
+    /// Connection between levels
     Join: NodeID,
+    /// Used to identify entities that recieve power, like doors
     Outlet: NodeID,
 
-    const SwitchEnum = enum { Off, Bottom, Top, Left, Right };
+    pub const Switch = struct {
+        source: NodeID,
+        state: SwitchEnum,
+    };
+    pub const SwitchOutlet = struct {
+        source: NodeID,
+        which: SwitchEnum,
+    };
+    pub const SwitchEnum = enum { Off, North, West, East, South };
 
     pub fn read(reader: anytype) !NodeKind {
         var kind: NodeKind = undefined;
@@ -839,9 +876,16 @@ pub const NodeKind = union(NodeEnum) {
                 kind = .{ .Plug = try reader.readInt(NodeID, .Little) };
             },
             .Switch => {
-                kind = .{
-                    .Switch = @intToEnum(SwitchEnum, try reader.readInt(NodeID, .Little)),
-                };
+                kind = .{ .Switch = .{
+                    .source = try reader.readInt(NodeID, .Little),
+                    .state = @intToEnum(SwitchEnum, try reader.readInt(u8, .Little)),
+                } };
+            },
+            .SwitchOutlet => {
+                kind = .{ .SwitchOutlet = .{
+                    .source = try reader.readInt(NodeID, .Little),
+                    .which = @intToEnum(SwitchEnum, try reader.readInt(u8, .Little)),
+                } };
             },
             .Join => {
                 kind = .{ .Join = try reader.readInt(NodeID, .Little) };
@@ -876,8 +920,13 @@ pub const NodeKind = union(NodeEnum) {
                 const socket = Socket orelse std.math.maxInt(NodeID);
                 try writer.writeInt(NodeID, socket, .Little);
             },
-            .Switch => |Switch| {
-                try writer.writeInt(NodeID, @enumToInt(Switch), .Little);
+            .Switch => |_Switch| {
+                try writer.writeInt(NodeID, _Switch.source, .Little);
+                try writer.writeInt(u8, @enumToInt(_Switch.state), .Little);
+            },
+            .SwitchOutlet => |_Switch| {
+                try writer.writeInt(NodeID, _Switch.source, .Little);
+                try writer.writeInt(u8, @enumToInt(_Switch.which), .Little);
             },
             .Join => |Join| {
                 try writer.writeInt(NodeID, Join, .Little);
@@ -899,7 +948,8 @@ pub const NodeKind = union(NodeEnum) {
             .Source => std.fmt.format(writer, "{s}", .{name}),
             .Plug => |Plug| std.fmt.format(writer, "{s} [{}]", .{ name, Plug }),
             .Socket => |Socket| std.fmt.format(writer, "{s} [{?}]", .{ name, Socket }),
-            .Switch => |Switch| std.fmt.format(writer, "{s} [{s}]", .{ name, @tagName(Switch) }),
+            .Switch => |_Switch| std.fmt.format(writer, "{s} <{s}> [{}]", .{ name, @tagName(_Switch.state), _Switch.source }),
+            .SwitchOutlet => |_Switch| std.fmt.format(writer, "{s} <{s}> [{}]", .{ name, @tagName(_Switch.which), _Switch.source }),
             .Join => |Join| std.fmt.format(writer, "{s} [{}]", .{ name, Join }),
             .Outlet => |Outlet| std.fmt.format(writer, "{s} [{}]", .{ name, Outlet }),
         };
