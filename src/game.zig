@@ -258,9 +258,12 @@ fn loadLevel(lvl: usize) !void {
         var i: usize = 0;
         while (level.getJoin(i)) |join| : (i += 1) {
             const globalc = Coord.fromWorld(level.world_x, level.world_y).addC(join);
+            var e = false;
             if (db.isEnergized(globalc)) {
-                circuit.addSource(.{join.val[0], join.val[1]});
+                e = true;
+                circuit.addSource(.{ join.val[0], join.val[1] });
             }
+            w4.tracef("---- Join %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @boolToInt(e));
         }
     }
 
@@ -714,19 +717,20 @@ fn updateCircuit() !void {
     db.updateCircuit();
 
     for (db.circuit_info) |node, n| {
+        const e = @boolToInt(node.energized);
         switch (node.kind) {
-            .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d]", n,  Conduit[0], Conduit[1]),
-            .And => |And| w4.tracef("[%d]: And [%d, %d]", n,  And[0], And[1]),
-            .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d]", n,  Xor[0], Xor[1]),
+            .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d] <%d>", n, Conduit[0], Conduit[1], e),
+            .And => |And| w4.tracef("[%d]: And [%d, %d] <%d>", n, And[0], And[1], e),
+            .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d] <%d>", n, Xor[0], Xor[1], e),
             .Source => w4.tracef("[%d]: Source", n),
-            .Plug => |Plug| {
-                const plug = Plug orelse std.math.maxInt(world.NodeID);
-                w4.tracef("[%d]: Plug [%d]", n,  plug);
+            .Socket => |Socket| {
+                const socket = Socket orelse std.math.maxInt(world.NodeID);
+                w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
             },
-            .Jack => |Jack| w4.tracef("[%d]: Jack [%d]", n,  Jack),
-            .Switch => |Switch| w4.tracef("[%d]: Switch [%s]", n,  &@tagName(Switch)),
-            .Join => |Join| w4.tracef("[%d]: Join [%d]", n,  Join),
-            .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d]", n,  Outlet),
+            .Plug => |Plug| w4.tracef("[%d]: Plug [%d] <%d>", n, Plug, e),
+            .Switch => |Switch| w4.tracef("[%d]: Switch [%s] <%d>", n, &@tagName(Switch), e),
+            .Join => |Join| w4.tracef("[%d]: Join [%d] <%d>", n, Join, e),
+            .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d] <%d>", n, Outlet, e),
         }
     }
 }

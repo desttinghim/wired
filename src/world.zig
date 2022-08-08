@@ -15,6 +15,7 @@ pub const CircuitType = enum(u4) {
     Xor = 7,
     Outlet = 8,
     Source = 9,
+    Socket = 10,
 };
 
 /// This lists the most important tiles so I don't have to keep rewriting things
@@ -319,6 +320,7 @@ pub const Level = struct {
                             const y = @intCast(i16, @divFloor(i, 20));
                             return Coord.init(.{ x, y });
                         }
+                        joinCount += 1;
                     }
                 },
                 else => continue,
@@ -647,11 +649,11 @@ pub const Database = struct {
         const p1id = db.getNodeID(p1) orelse return;
         const p2id = db.getNodeID(p2) orelse return;
 
-        if (db.circuit_info[p1id].kind == .Jack and db.circuit_info[p2id].kind == .Plug) {
-            db.circuit_info[p2id].kind.Plug = p1id;
-        } else if (db.circuit_info[p2id].kind == .Jack and db.circuit_info[p1id].kind == .Plug) {
-            db.circuit_info[p1id].kind.Plug = p2id;
-        } else if (db.circuit_info[p2id].kind == .Jack and db.circuit_info[p1id].kind == .Plug) {
+        if (db.circuit_info[p1id].kind == .Plug and db.circuit_info[p2id].kind == .Socket) {
+            db.circuit_info[p2id].kind.Socket = p1id;
+        } else if (db.circuit_info[p2id].kind == .Plug and db.circuit_info[p1id].kind == .Socket) {
+            db.circuit_info[p1id].kind.Socket = p2id;
+        } else if (db.circuit_info[p2id].kind == .Socket and db.circuit_info[p1id].kind == .Plug) {
             return error.Unimplemented;
         }
     }
@@ -690,15 +692,15 @@ pub const Database = struct {
                     const input2 = db.circuit_info[Conduit[1]].energized;
                     db.circuit_info[i].energized = (input1 or input2);
                 },
-                .Plug => |plug_opt| {
-                    if (plug_opt) |input| {
+                .Socket => |socket_opt| {
+                    if (socket_opt) |input| {
                         db.circuit_info[i].energized = db.circuit_info[input].energized;
                     } else {
                         db.circuit_info[i].energized = false;
                     }
                 },
-                .Jack => |Jack| {
-                    db.circuit_info[i].energized = db.circuit_info[Jack].energized;
+                .Plug => |Plug| {
+                    db.circuit_info[i].energized = db.circuit_info[Plug].energized;
                 },
                 .Switch => |state| {
                     // TODO Rework switch to make sense
@@ -768,7 +770,7 @@ const NodeEnum = enum(u4) {
     Source,
     Conduit,
     Plug,
-    Jack,
+    Socket,
     Switch,
     Join,
     Outlet,
@@ -783,11 +785,14 @@ pub const NodeKind = union(NodeEnum) {
     Source,
     /// Connects multiple nodes
     Conduit: [2]NodeID,
-    /// This node represents a physical plug in the game world. The
-    /// NodeID points to another plug, if connected
-    Plug: ?NodeID,
-    /// If a plug is connected to a circuit fragment with a source, it is a jack.
-    Jack: NodeID,
+    /// A "male" receptacle. Wires attached can provide power to
+    /// a socket on the other end.
+    Plug: NodeID,
+    /// A "female" receptacle. Wires attached provide power from
+    /// a plug on the other side.
+    ///
+    /// No visual difference from a plug.
+    Socket: ?NodeID,
     /// A switch can be in one of five states, though only
     /// two apply to any one switch.
     /// Vertical = Off or Top/Bottom, depending on flow
@@ -822,16 +827,16 @@ pub const NodeKind = union(NodeEnum) {
                     try reader.readInt(NodeID, .Little),
                 } };
             },
-            .Plug => {
-                const plug = try reader.readInt(NodeID, .Little);
-                if (plug == std.math.maxInt(NodeID)) {
-                    kind = .{ .Plug = null };
+            .Socket => {
+                const socket = try reader.readInt(NodeID, .Little);
+                if (socket == std.math.maxInt(NodeID)) {
+                    kind = .{ .Socket = null };
                 } else {
-                    kind = .{ .Plug = plug };
+                    kind = .{ .Socket = socket };
                 }
             },
-            .Jack => {
-                kind = .{ .Jack = try reader.readInt(NodeID, .Little) };
+            .Plug => {
+                kind = .{ .Plug = try reader.readInt(NodeID, .Little) };
             },
             .Switch => {
                 kind = .{
@@ -865,11 +870,11 @@ pub const NodeKind = union(NodeEnum) {
                 try writer.writeInt(NodeID, Conduit[1], .Little);
             },
             .Plug => |Plug| {
-                const plug = Plug orelse std.math.maxInt(NodeID);
-                try writer.writeInt(NodeID, plug, .Little);
+                try writer.writeInt(NodeID, Plug, .Little);
             },
-            .Jack => |Jack| {
-                try writer.writeInt(NodeID, Jack, .Little);
+            .Socket => |Socket| {
+                const socket = Socket orelse std.math.maxInt(NodeID);
+                try writer.writeInt(NodeID, socket, .Little);
             },
             .Switch => |Switch| {
                 try writer.writeInt(NodeID, @enumToInt(Switch), .Little);
@@ -892,8 +897,8 @@ pub const NodeKind = union(NodeEnum) {
             .And => |And| std.fmt.format(writer, "{s} [{}, {}]", .{ name, And[0], And[1] }),
             .Xor => |Xor| std.fmt.format(writer, "{s} [{}, {}]", .{ name, Xor[0], Xor[1] }),
             .Source => std.fmt.format(writer, "{s}", .{name}),
-            .Plug => |Plug| std.fmt.format(writer, "{s} [{?}]", .{ name, Plug }),
-            .Jack => |Jack| std.fmt.format(writer, "{s} [{}]", .{ name, Jack }),
+            .Plug => |Plug| std.fmt.format(writer, "{s} [{}]", .{ name, Plug }),
+            .Socket => |Socket| std.fmt.format(writer, "{s} [{?}]", .{ name, Socket }),
             .Switch => |Switch| std.fmt.format(writer, "{s} [{s}]", .{ name, @tagName(Switch) }),
             .Join => |Join| std.fmt.format(writer, "{s} [{}]", .{ name, Join }),
             .Outlet => |Outlet| std.fmt.format(writer, "{s} [{}]", .{ name, Outlet }),
