@@ -672,40 +672,40 @@ pub const Database = struct {
     pub fn updateCircuit(db: *Database) void {
         for (db.circuit_info) |node, i| {
             switch (node.kind) {
-            .And => |And| {
-                const input1 = db.circuit_info[And[0]].energized;
-                const input2 = db.circuit_info[And[1]].energized;
-                db.circuit_info[i].energized = (input1 and input2);
-            },
-            .Xor => |Xor| {
-                const input1 = db.circuit_info[Xor[0]].energized;
-                const input2 = db.circuit_info[Xor[1]].energized;
-                db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
-            },
+                .And => |And| {
+                    const input1 = db.circuit_info[And[0]].energized;
+                    const input2 = db.circuit_info[And[1]].energized;
+                    db.circuit_info[i].energized = (input1 and input2);
+                },
+                .Xor => |Xor| {
+                    const input1 = db.circuit_info[Xor[0]].energized;
+                    const input2 = db.circuit_info[Xor[1]].energized;
+                    db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
+                },
                 .Source => db.circuit_info[i].energized = true,
-            .Conduit => |Conduit| {
-                const input1 = db.circuit_info[Conduit[0]].energized;
-                const input2 = db.circuit_info[Conduit[1]].energized;
-                db.circuit_info[i].energized = (input1 or input2);
-            },
-            .Plug => |plug_opt| {
-                if (plug_opt) |input| {
-                    db.circuit_info[i].energized = db.circuit_info[input].energized;
-                } else {
+                .Conduit => |Conduit| {
+                    const input1 = db.circuit_info[Conduit[0]].energized;
+                    const input2 = db.circuit_info[Conduit[1]].energized;
+                    db.circuit_info[i].energized = (input1 or input2);
+                },
+                .Plug => |plug_opt| {
+                    if (plug_opt) |input| {
+                        db.circuit_info[i].energized = db.circuit_info[input].energized;
+                    } else {
+                        db.circuit_info[i].energized = false;
+                    }
+                },
+                .Switch => |state| {
+                    // TODO Rework switch to make sense
                     db.circuit_info[i].energized = false;
-                }
-            },
-            .Switch => |state| {
-                // TODO Rework switch to make sense
-                db.circuit_info[i].energized = false;
-                _ = state;
-            },
-            .Join => |Join| {
-                db.circuit_info[i].energized = db.circuit_info[Join].energized;
-            },
-            .Outlet => |Outlet| {
-                db.circuit_info[i].energized = db.circuit_info[Outlet].energized;
-            },
+                    _ = state;
+                },
+                .Join => |Join| {
+                    db.circuit_info[i].energized = db.circuit_info[Join].energized;
+                },
+                .Outlet => |Outlet| {
+                    db.circuit_info[i].energized = db.circuit_info[Outlet].energized;
+                },
             }
         }
     }
