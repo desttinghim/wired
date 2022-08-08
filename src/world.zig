@@ -307,6 +307,26 @@ pub const Level = struct {
         return tiles[i];
     }
 
+    pub fn getJoin(level: Level, which: usize) ?Coordinate {
+        const tiles = level.tiles orelse return null;
+        var joinCount: usize = 0;
+        for (tiles) |tile, i| {
+            switch (tile) {
+                .flags => |flag| {
+                    if (flag.circuit == .Join) {
+                        if (joinCount == which) {
+                            const x = @intCast(i16, @mod(i, 20));
+                            const y = @intCast(i16, @divFloor(i, 20));
+                            return Coord.init(.{ x, y });
+                        }
+                    }
+                },
+                else => continue,
+            }
+        }
+        return null;
+    }
+
     pub fn getWire(level: *Level, num: usize) ?[2]Entity {
         std.debug.assert(level.entities != null);
         var node_begin: ?Entity = null;
@@ -622,15 +642,71 @@ pub const Database = struct {
             if (!p1.eq(node.coord) or !p2.eq(node.coord)) continue;
             if (p1.eq(node.coord)) opt1 = i else opt2 = i;
         }
-        var w1 = db.circuit_info[opt1 orelse return];
-        var w2 = db.circuit_info[opt2 orelse return];
+        var plug1 = db.circuit_info[opt1 orelse return];
+        var plug2 = db.circuit_info[opt2 orelse return];
 
-        if (w1.energized and !w2.energized) {
-            w2.energized = true;
-            w2.kind.Plug = @intCast(NodeID, opt1.?);
-        } else if (w2.energized and !w1.energized) {
-            w1.energized = true;
-            w1.kind.Plug = @intCast(NodeID, opt2.?);
+        if (plug1.energized and !plug2.energized) {
+            plug2.energized = true;
+            plug2.kind.Plug = @intCast(NodeID, opt1.?);
+        } else if (plug2.energized and !plug1.energized) {
+            plug1.energized = true;
+            plug1.kind.Plug = @intCast(NodeID, opt2.?);
+        }
+    }
+
+    pub fn disconnectPlug(db: *Database, plug: Coord) void {
+        for (db.circuit_info) |node, i| {
+            if (!plug.eq(node.coord)) continue;
+            db.circuit_info[i].energized = false;
+        }
+    }
+
+    pub fn isEnergized(db: *Database, coord: Coord) bool {
+        for (db.circuit_info) |node, i| {
+            if (!coord.eq(node.coord)) continue;
+            return db.circuit_info[i].energized;
+        }
+        return false;
+    }
+
+    pub fn updateCircuit(db: *Database) void {
+        for (db.circuit_info) |node, i| {
+            switch (node.kind) {
+            .And => |And| {
+                const input1 = db.circuit_info[And[0]].energized;
+                const input2 = db.circuit_info[And[1]].energized;
+                db.circuit_info[i].energized = (input1 and input2);
+            },
+            .Xor => |Xor| {
+                const input1 = db.circuit_info[Xor[0]].energized;
+                const input2 = db.circuit_info[Xor[1]].energized;
+                db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
+            },
+                .Source => db.circuit_info[i].energized = true,
+            .Conduit => |Conduit| {
+                const input1 = db.circuit_info[Conduit[0]].energized;
+                const input2 = db.circuit_info[Conduit[1]].energized;
+                db.circuit_info[i].energized = (input1 or input2);
+            },
+            .Plug => |plug_opt| {
+                if (plug_opt) |input| {
+                    db.circuit_info[i].energized = db.circuit_info[input].energized;
+                } else {
+                    db.circuit_info[i].energized = false;
+                }
+            },
+            .Switch => |state| {
+                // TODO Rework switch to make sense
+                db.circuit_info[i].energized = false;
+                _ = state;
+            },
+            .Join => |Join| {
+                db.circuit_info[i].energized = db.circuit_info[Join].energized;
+            },
+            .Outlet => |Outlet| {
+                db.circuit_info[i].energized = db.circuit_info[Outlet].energized;
+            },
+            }
         }
     }
 };

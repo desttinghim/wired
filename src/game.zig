@@ -10,6 +10,7 @@ const State = @import("main.zig").State;
 // const Disk = @import("disk.zig");
 const extract = @import("extract.zig");
 const world = @import("world.zig");
+const Coord = world.Coordinate;
 const world_data = @embedFile(@import("world_data").path);
 
 const Vec2 = util.Vec2;
@@ -253,6 +254,15 @@ fn loadLevel(lvl: usize) !void {
         }
     }
 
+    {
+        var i: usize = 0;
+        while (level.getJoin(i)) |join| : (i += 1) {
+            const globalc = Coord.fromWorld(level.world_x, level.world_y).addC(join);
+            if (db.isEnergized(globalc)) {
+                circuit.addSource(.{join.val[0], join.val[1]});
+            }
+        }
+    }
 
     try coins.resize(0);
     // if (!try Disk.load()) {
@@ -268,7 +278,6 @@ fn loadLevel(lvl: usize) !void {
     // }
 
     try updateCircuit();
-
 }
 
 fn moveLevel(direction: enum { L, R, U, D }) !void {
@@ -625,6 +634,10 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                     control.grabbing = .{ .id = wire.id, .which = wire.which };
                     wires.slice()[wire.id].nodes.slice()[wire.which].pos = pos.pos + Vec2f{ 0, -4 };
                     wires.slice()[wire.id].nodes.slice()[wire.which].pinned = false;
+                    const local32 = vec2ftovec2(wires.slice()[wire.id].nodes.slice()[wire.which].pos / @splat(2, @as(f32, 8)));
+                    const x = level.world_x * 20 + @intCast(i16, local32[0]);
+                    const y = level.world_y * 20 + @intCast(i16, local32[1]);
+                    db.disconnectPlug(Coord.init(.{ x, y }));
                     try updateCircuit();
                 },
                 .plug => |plug| {
@@ -654,8 +667,7 @@ fn updateCircuit() !void {
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
 
-        const Coord = world.Coordinate;
-        const topleft = Coord.fromWorld( level.world_x, level.world_y );
+        const topleft = Coord.fromWorld(level.world_x, level.world_y);
         const p1 = Coord.init(.{
             @intCast(i16, cellBegin[0]),
             @intCast(i16, cellBegin[1]),
@@ -695,7 +707,7 @@ fn updateCircuit() !void {
         try map.set_cell(door, world.Tiles.Empty);
     }
 
-
+    db.updateCircuit();
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {
