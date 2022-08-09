@@ -207,6 +207,7 @@ fn loadLevel(lvl: usize) !void {
     map.clear();
     circuit.clearMap();
     level = try db.levelLoad(alloc, lvl);
+    const levelc = world.Coordinate.fromWorld(level.world_x, level.world_y);
 
     try extract.extractLevel(.{
         .alloc = frame_alloc,
@@ -225,9 +226,11 @@ fn loadLevel(lvl: usize) !void {
     {
         _ = try wires.resize(0);
         var a: usize = 0;
-        while (level.getWire(a)) |wire| : (a += 1) {
-            const p1 = util.vec2ToVec2f(Vec2{ wire[0].x, wire[0].y } * tile_size + Vec2{ 4, 4 });
-            const p2 = util.vec2ToVec2f(Vec2{ wire[1].x, wire[1].y } * tile_size + Vec2{ 4, 4 });
+        while (db.getWire(level, a)) |wire| : (a += 1) {
+            const coord0 = wire[0].coord.subC(levelc);
+            const coord1 = wire[1].coord.subC(levelc);
+            const p1 = util.vec2ToVec2f(coord0.toVec2() * tile_size + Vec2{ 4, 4 });
+            const p2 = util.vec2ToVec2f(coord1.toVec2() * tile_size + Vec2{ 4, 4 });
 
             var w = try wires.addOne();
             _ = try w.nodes.resize(0);
@@ -249,15 +252,16 @@ fn loadLevel(lvl: usize) !void {
 
     {
         var i: usize = 0;
-        while (level.getDoor(i)) |door| : (i += 1) {
-            try circuit.addDoor(Vec2{ door.x, door.y });
+        while (db.getDoor(level, i)) |door| : (i += 1) {
+            const coord = door.coord.subC(levelc);
+            try circuit.addDoor(coord.toVec2());
         }
     }
 
     {
         var i: usize = 0;
         while (level.getJoin(i)) |join| : (i += 1) {
-            const globalc = Coord.fromWorld(level.world_x, level.world_y).addC(join);
+            const globalc = levelc.addC(join);
             var e = false;
             if (db.isEnergized(globalc)) {
                 e = true;
@@ -270,9 +274,10 @@ fn loadLevel(lvl: usize) !void {
     try coins.resize(0);
     // if (!try Disk.load()) {
     var i: usize = 0;
-    while (level.getCoin(i)) |coin| : (i += 1) {
+    while (db.getCoin(level, i)) |coin| : (i += 1) {
+        const coord = coin.coord.subC(levelc);
         try coins.append(.{
-            .pos = Pos.init(util.vec2ToVec2f(Vec2{ coin.x, coin.y } * tile_size)),
+            .pos = Pos.init(util.vec2ToVec2f(coord.toVec2() * tile_size)),
             .sprite = .{ .offset = .{ 0, 0 }, .size = .{ 8, 8 }, .index = 4, .flags = .{ .bpp = .b2 } },
             .anim = Anim{ .anim = &anim_store.coin },
             .area = .{ .pos = .{ 0, 0 }, .size = .{ 8, 8 } },
@@ -342,18 +347,20 @@ pub fn start() !void {
 
     db = try world.Database.init(db_alloc);
 
-    try loadLevel(0);
+    const spawn = db.getSpawn();
 
-    const spawnArr = level.getSpawn() orelse return error.NoPlayerSpawn;
-    const spawn = Vec2{ spawnArr[0], spawnArr[1] };
+    const spawn_worldc = spawn.coord.toWorld();
+    const first_level = db.findLevel(spawn_worldc[0], spawn_worldc[1]) orelse return error.SpawnOutOfBounds;
 
-    camera = @divTrunc(spawn, @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    try loadLevel(first_level);
+
+    camera = @divTrunc(spawn.coord.toVec2(), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
     const tile_size = Vec2{ 8, 8 };
     const offset = Vec2{ 4, 8 };
 
     player = .{
-        .pos = Pos.init(util.vec2ToVec2f(spawn * tile_size + offset)),
+        .pos = Pos.init(util.vec2ToVec2f(spawn.coord.toVec2() * tile_size + offset)),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 8, .flags = .{ .bpp = .b2 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
@@ -713,15 +720,19 @@ fn updateCircuit() !void {
 
     // Add doors to map
     var i: usize = 0;
-    while (level.getDoor(i)) |door| : (i += 1) {
+    while (db.getDoor(level, i)) |door| : (i += 1) {
         const tile: u8 = if (door.kind == .Door) world.Tiles.Door else world.Tiles.Trapdoor;
-        try map.set_cell(.{ door.x, door.y }, tile);
+        const globalc = world.Coordinate.fromWorld(level.world_x, level.world_y);
+        const coord = door.coord.subC(globalc);
+        w4.tracef("[getDoor] (%d, %d)", coord.val[0], coord.val[1]);
+        try map.set_cell(coord.toVec2(), tile);
     }
 
     // Remove doors that have been unlocked
     const enabledDoors = try circuit.enabledDoors(frame_alloc);
     defer frame_alloc.free(enabledDoors.items);
     for (enabledDoors.items) |door| {
+        w4.tracef("[enabledDoors] (%d, %d)", door[0], door[1]);
         try map.set_cell(door, world.Tiles.Empty);
     }
 

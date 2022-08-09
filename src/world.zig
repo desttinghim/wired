@@ -178,18 +178,35 @@ pub const Coordinate = struct {
         return .{ .val = .{ coord.val[0] + val[0], coord.val[1] + val[1] } };
     }
 
+    pub fn sub(coord: Coordinate, val: [2]i16) Coordinate {
+        return .{ .val = .{ coord.val[0] - val[0], coord.val[1] - val[1] } };
+    }
+
     pub fn addC(coord: Coordinate, other: Coordinate) Coordinate {
         return .{ .val = .{ coord.val[0] + other.val[0], coord.val[1] + other.val[1] } };
+    }
+
+    pub fn subC(coord: Coordinate, other: Coordinate) Coordinate {
+        return .{ .val = .{ coord.val[0] - other.val[0], coord.val[1] - other.val[1] } };
     }
 
     pub fn eq(coord: Coordinate, other: Coordinate) bool {
         return coord.val[0] == other.val[0] and coord.val[1] == other.val[1];
     }
 
+    pub fn within(coord: Coord, nw: Coord, se: Coord) bool {
+        return coord.val[0] >= nw.val[0] and coord.val[1] >= nw.val[1] and
+            coord.val[0] < se.val[0] and coord.val[1] < se.val[1];
+    }
+
     pub fn toWorld(coord: Coordinate) [2]i8 {
         const world_x = @intCast(i8, @divFloor(coord.val[0], LEVELSIZE));
         const world_y = @intCast(i8, @divFloor(coord.val[1], LEVELSIZE));
         return .{ world_x, world_y };
+    }
+
+    pub fn toVec2(coord: Coordinate) @Vector(2, i32) {
+        return .{ coord.val[0], coord.val[1] };
     }
 
     pub fn fromWorld(x: i8, y: i8) Coordinate {
@@ -222,49 +239,36 @@ pub const Level = struct {
     world_y: i8,
     width: u16,
     size: u16,
-    entity_count: u16,
     tiles: ?[]TileData,
-    entities: ?[]Entity = null,
 
-    pub fn init(x: u8, y: u8, width: u16, buf: []TileData, entities: []Entity) Level {
+    pub fn init(x: u8, y: u8, width: u16, buf: []TileData) Level {
         return Level{
             .world_x = x,
             .world_y = y,
             .width = width,
             .size = buf.len,
-            .entity_count = entities.len,
             .tiles = buf,
-            .entities = entities,
         };
     }
 
     pub fn calculateSize(level: Level) !usize {
         const tiles = level.tiles orelse return error.NullTiles;
-        const entities = level.entities orelse return error.NullEntities;
         return @sizeOf(i8) + // world_x
             @sizeOf(i8) + // world_y
             @sizeOf(u16) + // width
             @sizeOf(u16) + // size
-            @sizeOf(u16) + // entity_count
-            tiles.len + //
-            entities.len * 5;
+            tiles.len;
     }
 
     pub fn write(level: Level, writer: anytype) !void {
         var tiles = level.tiles orelse return error.NullTiles;
-        var entities = level.entities orelse return error.NullEntities;
         try writer.writeInt(i8, level.world_x, .Little);
         try writer.writeInt(i8, level.world_y, .Little);
         try writer.writeInt(u16, level.width, .Little);
         try writer.writeInt(u16, level.size, .Little);
-        try writer.writeInt(u16, level.entity_count, .Little);
 
         for (tiles) |tile| {
             try writer.writeByte(tile.toByte());
-        }
-
-        for (entities) |entity| {
-            try entity.write(writer);
         }
     }
 
@@ -274,9 +278,7 @@ pub const Level = struct {
             .world_y = try reader.readInt(i8, .Little),
             .width = try reader.readInt(u16, .Little),
             .size = try reader.readInt(u16, .Little),
-            .entity_count = try reader.readInt(u16, .Little),
             .tiles = null,
-            .entities = null,
         };
     }
 
@@ -287,25 +289,6 @@ pub const Level = struct {
         while (i < level.size) : (i += 1) {
             buf[i] = TileData.fromByte(try reader.readByte());
         }
-    }
-
-    pub fn readEntities(level: *Level, reader: anytype, buf: []Entity) !void {
-        std.debug.assert(buf.len >= level.entity_count);
-        level.entities = buf;
-        var i: usize = 0;
-        while (i < level.entity_count) : (i += 1) {
-            buf[i] = try Entity.read(reader);
-        }
-    }
-
-    pub fn getSpawn(level: *Level) ?[2]i16 {
-        std.debug.assert(level.entities != null);
-        for (level.entities.?) |entity| {
-            if (entity.kind == .Player) {
-                return [2]i16{ entity.x, entity.y };
-            }
-        }
-        return null;
     }
 
     pub fn getTile(level: Level, globalc: Coord) ?TileData {
@@ -334,47 +317,6 @@ pub const Level = struct {
                     }
                 },
                 else => continue,
-            }
-        }
-        return null;
-    }
-
-    pub fn getWire(level: *Level, num: usize) ?[2]Entity {
-        std.debug.assert(level.entities != null);
-        var node_begin: ?Entity = null;
-        var wire_count: usize = 0;
-        for (level.entities.?) |entity| {
-            if (entity.kind == .WireNode or entity.kind == .WireAnchor) {
-                node_begin = entity;
-            } else if (entity.kind == .WireEndNode or entity.kind == .WireEndAnchor) {
-                if (node_begin) |begin| {
-                    if (wire_count == num) return [2]Entity{ begin, entity };
-                }
-                wire_count += 1;
-            }
-        }
-        return null;
-    }
-
-    pub fn getDoor(level: *Level, num: usize) ?Entity {
-        std.debug.assert(level.entities != null);
-        var count: usize = 0;
-        for (level.entities.?) |entity| {
-            if (entity.kind == .Door or entity.kind == .Trapdoor) {
-                if (count == num) return entity;
-                count += 1;
-            }
-        }
-        return null;
-    }
-
-    pub fn getCoin(level: *Level, num: usize) ?Entity {
-        std.debug.assert(level.entities != null);
-        var count: usize = 0;
-        for (level.entities.?) |entity| {
-            if (entity.kind == .Coin) {
-                if (count == num) return entity;
-                count += 1;
             }
         }
         return null;
@@ -493,8 +435,7 @@ pub const EntityKind = enum(u8) {
 
 pub const Entity = struct {
     kind: EntityKind,
-    x: i16,
-    y: i16,
+    coord: Coordinate,
 
     pub fn calculateSize() usize {
         return @sizeOf(u8) + // kind
@@ -504,15 +445,13 @@ pub const Entity = struct {
 
     pub fn write(entity: Entity, writer: anytype) !void {
         try writer.writeInt(u8, @enumToInt(entity.kind), .Little);
-        try writer.writeInt(i16, entity.x, .Little);
-        try writer.writeInt(i16, entity.y, .Little);
+        try entity.coord.write(writer);
     }
 
     pub fn read(reader: anytype) !Entity {
         return Entity{
             .kind = @intToEnum(EntityKind, try reader.readInt(u8, .Little)),
-            .x = try reader.readInt(i16, .Little),
-            .y = try reader.readInt(i16, .Little),
+            .coord = try Coordinate.read(reader),
         };
     }
 };
@@ -546,17 +485,25 @@ pub const LevelHeader = struct {
 pub fn write(
     writer: anytype,
     level_headers: []LevelHeader,
+    entities: []Entity,
     circuit_nodes: []CircuitNode,
     levels: []Level,
 ) !void {
     // Write number of levels
     try writer.writeInt(u16, @intCast(u16, level_headers.len), .Little);
+    // Write number of entities
+    try writer.writeInt(u16, @intCast(u16, entities.len), .Little);
     // Write number of circuit nodes
     try writer.writeInt(u16, @intCast(u16, circuit_nodes.len), .Little);
 
     // Write headers
     for (level_headers) |lvl_header| {
         try lvl_header.write(writer);
+    }
+
+    // Write entity data
+    for (entities) |entity| {
+        try entity.write(writer);
     }
 
     // Write node data
@@ -574,6 +521,7 @@ const Cursor = std.io.FixedBufferStream([]const u8);
 pub const Database = struct {
     cursor: Cursor,
     level_info: []LevelHeader,
+    entities: []Entity,
     circuit_info: []CircuitNode,
     level_data_begin: usize,
 
@@ -589,6 +537,8 @@ pub const Database = struct {
 
         // read number of levels
         const level_count = try reader.readInt(u16, .Little);
+        // read number of entities
+        const entity_count = try reader.readInt(u16, .Little);
         // read number of nodes
         const node_count = try reader.readInt(u16, .Little);
 
@@ -599,22 +549,33 @@ pub const Database = struct {
             level_headers[i] = try LevelHeader.read(reader);
         }
 
+        // read entities
+        var entities = try alloc.alloc(Entity, entity_count);
+
+        for (entities) |_, i| {
+            entities[i] = try Entity.read(reader);
+        }
+
+        // read circuits
         var circuit_nodes = try alloc.alloc(CircuitNode, node_count);
 
-        // read headers
         for (circuit_nodes) |_, i| {
             circuit_nodes[i] = try CircuitNode.read(reader);
         }
 
+        // Save where the rest of the data ended, and the level data begins
         var level_data_begin = @intCast(usize, try cursor.getPos());
 
         return Database{
             .cursor = cursor,
             .level_info = level_headers,
+            .entities = entities,
             .circuit_info = circuit_nodes,
             .level_data_begin = level_data_begin,
         };
     }
+
+    // Level functions
 
     pub fn levelInfo(db: *Database, level: usize) !Level {
         if (level > db.level_info.len) return error.InvalidLevel;
@@ -632,9 +593,6 @@ pub const Database = struct {
         var level_buf = try alloc.alloc(TileData, level_info.size);
         try level_info.readTiles(reader, level_buf);
 
-        var entity_buf = try alloc.alloc(Entity, level_info.entity_count);
-        try level_info.readEntities(reader, entity_buf);
-
         return level_info;
     }
 
@@ -646,6 +604,8 @@ pub const Database = struct {
         }
         return null;
     }
+
+    // Circuit functions
 
     fn getNodeID(db: *Database, coord: Coord) ?NodeID {
         for (db.circuit_info) |node, i| {
@@ -751,6 +711,66 @@ pub const Database = struct {
             _ = db.updateCircuitFragment(i, visited);
             if (i == 0) break;
         }
+    }
+
+    // Entity functions
+
+    pub fn getWire(database: *Database, level: Level, num: usize) ?[2]Entity {
+        const nw = Coord.fromWorld(level.world_x, level.world_y);
+        const se = nw.add(.{ 20, 20 });
+        var node_begin: ?Entity = null;
+        var wire_count: usize = 0;
+        for (database.entities) |entity| {
+            if (!entity.coord.within(nw, se)) continue;
+            if (entity.kind == .WireNode or entity.kind == .WireAnchor) {
+                node_begin = entity;
+            } else if (entity.kind == .WireEndNode or entity.kind == .WireEndAnchor) {
+                if (node_begin) |begin| {
+                    if (wire_count == num) return [2]Entity{ begin, entity };
+                }
+                wire_count += 1;
+            }
+        }
+        return null;
+    }
+
+    pub fn getDoor(database: *Database, level: Level, num: usize) ?Entity {
+        const nw = Coord.fromWorld(level.world_x, level.world_y);
+        const se = nw.add(.{ 20, 20 });
+        var count: usize = 0;
+        for (database.entities) |entity| {
+            if (!entity.coord.within(nw, se)) continue;
+            if (entity.kind == .Door or entity.kind == .Trapdoor) {
+                if (count == num) return entity;
+                count += 1;
+            }
+        }
+        return null;
+    }
+
+    pub fn getCoin(database: *Database, level: Level, num: usize) ?Entity {
+        const nw = Coord.fromWorld(level.world_x, level.world_y);
+        const se = nw.add(.{ 20, 20 });
+        var count: usize = 0;
+        for (database.entities) |entity| {
+            if (!entity.coord.within(nw, se)) continue;
+            if (entity.kind == .Coin) {
+                if (count == num) return entity;
+                count += 1;
+            }
+        }
+        return null;
+    }
+
+    /// Returns the players spawn location.
+    /// Assumes a spawn exists and that there is only one of them
+    pub fn getSpawn(database: *Database) Entity {
+        for (database.entities) |entity| {
+            if (entity.kind == .Player) {
+                return entity;
+            }
+        }
+        @panic("No player spawn found! Invalid state");
     }
 };
 
