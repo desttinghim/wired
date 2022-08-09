@@ -216,6 +216,10 @@ pub const Coordinate = struct {
         } };
     }
 
+    pub fn fromVec2(vec: @Vector(2, i32)) Coordinate {
+        return .{ .val = .{ @intCast(i16, vec[0]), @intCast(i16, vec[1]) } };
+    }
+
     pub fn toLevelTopLeft(coord: Coordinate) Coordinate {
         const worldc = coord.toWorld();
         return .{ .val = .{
@@ -431,6 +435,7 @@ pub const EntityKind = enum(u8) {
     WireEndAnchor,
     Door,
     Trapdoor,
+    Collected,
 };
 
 pub const Entity = struct {
@@ -714,6 +719,18 @@ pub const Database = struct {
     }
 
     // Entity functions
+    pub fn getEntityID(database: *Database, coord: Coordinate) ?usize {
+        for (database.entities) |entity, i| {
+            if (!entity.coord.eq(coord)) continue;
+            return i;
+        }
+        return null;
+    }
+
+    pub fn collectCoin(db: *Database, coord: Coordinate) void {
+        const coin = db.getEntityID(coord) orelse return;
+        db.entities[coin].kind = .Collected;
+    }
 
     pub fn getWire(database: *Database, level: Level, num: usize) ?[2]Entity {
         const nw = Coord.fromWorld(level.world_x, level.world_y);

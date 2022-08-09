@@ -418,6 +418,8 @@ pub fn update(time: usize) !State {
                 try remove.append(i);
                 music.playCollect(score);
                 shouldSave = true;
+                const coord = world.Coordinate.fromVec2(util.world2cell(coin.pos.pos));
+                db.collectCoin(coord);
             }
         }
         while (remove.popOrNull()) |i| {
@@ -661,7 +663,7 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                     const new_switch = circuit.toggle(cell);
                     if (new_switch) |tile| {
                         const T = world.Tiles;
-                        const new_state: u8 = switch(tile) {
+                        const new_state: u8 = switch (tile) {
                             T.SwitchTeeWestOn, T.SwitchTeeEastOn, T.SwitchVerticalOn => 1,
                             else => 0,
                         };
