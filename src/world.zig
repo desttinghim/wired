@@ -857,7 +857,20 @@ pub const Database = struct {
         db.entities[coin].kind = .Collected;
     }
 
-    pub fn getWire(database: *Database, level: Level, num: usize) ?[]Wire {
+    /// Remove a wire slice from the wires array. Invalidates handles returned from findWire
+    pub fn deleteWire(database: *Database, wire: [2]usize) void {
+        const wire_size = wire[1] - wire[0];
+        std.mem.rotate(Wire, database.wires, wire_size);
+        database.wire_count -= wire_size;
+    }
+
+    /// Retrieve the slice of the wire from findWire
+    pub fn getWire(database: *Database, wire: [2]usize) []Wire {
+        return database.wires[wire[0]..wire[1]];
+    }
+
+    /// Find a wire within the limits of a given level
+    pub fn findWire(database: *Database, level: Level, num: usize) ?[2]usize {
         const nw = Coord.fromWorld(level.world_x, level.world_y);
         const se = nw.add(.{ 20, 20 });
         var node_begin: ?usize = null;
@@ -878,7 +891,7 @@ pub const Database = struct {
                 .End => {
                     if (node_begin) |node| {
                         if (wire_count == num) {
-                            return database.wires[node..i + 1];
+                            return [2]usize{node, i + 1};
                         }
                         wire_count += 1;
                         node_begin = null;

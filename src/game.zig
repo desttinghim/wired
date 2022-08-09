@@ -226,7 +226,9 @@ fn loadLevel(lvl: usize) !void {
     {
         _ = try wires.resize(0);
         var a: usize = 0;
-        while (db.getWire(level, a)) |wireSlice| : (a += 1) {
+        while (db.findWire(level, 0)) |wireArr| : (a += 1) {
+            defer db.deleteWire(wireArr);
+            const wireSlice = db.getWire(wireArr);
             const wire = try world.Wire.getEnds(wireSlice);
             const coord0 = wire[0].coord.subC(levelc);
             const coord1 = wire[1].coord.subC(levelc);
