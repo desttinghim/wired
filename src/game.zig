@@ -382,7 +382,7 @@ pub fn start() !void {
         .map_size = level_size,
         .bridges = try alloc.alloc(Circuit.BridgeState, 5),
         .sources = try alloc.alloc(util.Cell, 5),
-        .doors = try alloc.alloc(Circuit.DoorState, 5),
+        .doors = try alloc.alloc(Circuit.DoorState, 10),
     };
     circuit = Circuit.init(circuit_options);
 
@@ -390,20 +390,21 @@ pub fn start() !void {
 
     db = try world.Database.init(db_alloc);
 
-    const spawn = db.getSpawn();
+    const spawn_entity = db.getSpawn();
+    const spawn = spawn_entity.coord.subC(spawn_entity.coord.toLevelTopLeft());
 
-    const spawn_worldc = spawn.coord.toWorld();
+    const spawn_worldc = spawn_entity.coord.toWorld();
     const first_level = db.findLevel(spawn_worldc[0], spawn_worldc[1]) orelse return error.SpawnOutOfBounds;
 
     try loadLevel(first_level);
 
-    camera = @divTrunc(spawn.coord.toVec2(), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
+    camera = @divTrunc(spawn.toVec2(), @splat(2, @as(i32, 20))) * @splat(2, @as(i32, 20));
 
     const tile_size = Vec2{ 8, 8 };
     const offset = Vec2{ 4, 8 };
 
     player = .{
-        .pos = Pos.init(util.vec2ToVec2f(spawn.coord.toVec2() * tile_size + offset)),
+        .pos = Pos.init(util.vec2ToVec2f(spawn.toVec2() * tile_size + offset)),
         .control = .{ .controller = .player, .state = .stand },
         .sprite = .{ .offset = .{ -4, -8 }, .size = .{ 8, 8 }, .index = 8, .flags = .{ .bpp = .b2 } },
         .physics = .{ .friction = Vec2f{ 0.15, 0.1 }, .gravity = Vec2f{ 0, 0.25 } },
