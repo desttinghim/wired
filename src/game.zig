@@ -232,7 +232,7 @@ fn loadLevel(lvl: usize) !void {
             const wire = try world.Wire.getEnds(wireSlice);
             const coord0 = wire[0].coord.subC(levelc);
             const coord1 = wire[1].coord.subC(levelc);
-            w4.tracef("---- Wire (%d, %d), (%d, %d)", coord0.val[0], coord0.val[1], coord1.val[0], coord1.val[1]);
+            w4.tracef("---- Wire [%d, %d] (%d, %d), (%d, %d)", wireArr[0], wireArr[1], coord0.val[0], coord0.val[1], coord1.val[0], coord1.val[1]);
             const p1 = util.vec2ToVec2f(coord0.toVec2() * tile_size + Vec2{ 4, 4 });
             const p2 = util.vec2ToVec2f(coord1.toVec2() * tile_size + Vec2{ 4, 4 });
 
@@ -293,6 +293,32 @@ fn loadLevel(lvl: usize) !void {
 }
 
 fn moveLevel(direction: enum { L, R, U, D }) !void {
+    // Save wires back into database
+    const levelc = world.Coordinate.fromWorld(level.world_x, level.world_y);
+    while (wires.popOrNull()) |*w| {
+        const aStart = w.begin().pinned;
+        const aEnd = w.begin().pinned;
+        const divby = @splat(2, @as(f32, 8));
+        const wstart = world.Coordinate.fromVec2f(w.begin().pos / divby).addC(levelc);
+        const offset = w.end().pos - w.begin().pos;
+        const end = world.Coordinate.fromVec2f(offset / divby).toOffset();
+        var wire: [3]world.Wire = undefined;
+        if (aStart) {
+            wire[0] = .{.BeginPinned = wstart};
+        } else {
+            wire[0] = .{.Begin = wstart};
+        }
+
+        if (aEnd) {
+            wire[1] = .{.PointPinned = end};
+        } else {
+            wire[1] = .{.Point = end};
+        }
+
+        wire[2] = .End;
+        db.addWire(&wire);
+    }
+
     // TODO: Figure out the more principled way for checking boundaries
     var velocity = player.pos.getVelocity();
     switch (direction) {
@@ -745,24 +771,24 @@ fn updateCircuit() !void {
 
     try db.updateCircuit(frame_alloc);
 
-    for (db.circuit_info) |node, n| {
-        const e = @boolToInt(node.energized);
-        switch (node.kind) {
-            .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d] <%d>", n, Conduit[0], Conduit[1], e),
-            .And => |And| w4.tracef("[%d]: And [%d, %d] <%d>", n, And[0], And[1], e),
-            .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d] <%d>", n, Xor[0], Xor[1], e),
-            .Source => w4.tracef("[%d]: Source", n),
-            .Socket => |Socket| {
-                const socket = Socket orelse std.math.maxInt(world.NodeID);
-                w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
-            },
-            .Plug => |Plug| w4.tracef("[%d]: Plug [%d] <%d>", n, Plug, e),
-            .Switch => |Switch| w4.tracef("[%d]: Switch %d [%d] <%d>", n, Switch.state, Switch.source, e),
-            .SwitchOutlet => |Switch| w4.tracef("[%d]: SwitchOutlet %d [%d] <%d>", n, Switch.which, Switch.source, e),
-            .Join => |Join| w4.tracef("[%d]: Join [%d] <%d>", n, Join, e),
-            .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d] <%d>", n, Outlet, e),
-        }
-    }
+    // for (db.circuit_info) |node, n| {
+    //     const e = @boolToInt(node.energized);
+    //     switch (node.kind) {
+    //         .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d] <%d>", n, Conduit[0], Conduit[1], e),
+    //         .And => |And| w4.tracef("[%d]: And [%d, %d] <%d>", n, And[0], And[1], e),
+    //         .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d] <%d>", n, Xor[0], Xor[1], e),
+    //         .Source => w4.tracef("[%d]: Source", n),
+    //         .Socket => |Socket| {
+    //             const socket = Socket orelse std.math.maxInt(world.NodeID);
+    //             w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
+    //         },
+    //         .Plug => |Plug| w4.tracef("[%d]: Plug [%d] <%d>", n, Plug, e),
+    //         .Switch => |Switch| w4.tracef("[%d]: Switch %d [%d] <%d>", n, Switch.state, Switch.source, e),
+    //         .SwitchOutlet => |Switch| w4.tracef("[%d]: SwitchOutlet %d [%d] <%d>", n, Switch.which, Switch.source, e),
+    //         .Join => |Join| w4.tracef("[%d]: Join [%d] <%d>", n, Join, e),
+    //         .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d] <%d>", n, Outlet, e),
+    //     }
+    // }
 }
 
 fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {

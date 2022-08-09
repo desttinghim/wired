@@ -228,6 +228,10 @@ pub const Coordinate = struct {
         return .{ .val = .{ @intCast(i16, vec[0]), @intCast(i16, vec[1]) } };
     }
 
+    pub fn fromVec2f(vec: @Vector(2, f32)) Coordinate {
+        return fromVec2(.{ @floatToInt(i32, vec[0]), @floatToInt(i32, vec[1]) });
+    }
+
     pub fn toLevelTopLeft(coord: Coordinate) Coordinate {
         const worldc = coord.toWorld();
         return .{ .val = .{
@@ -489,30 +493,21 @@ pub const Wire = union(enum) {
     pub fn getEnds(wires: []Wire) ![2]EndData {
         std.debug.assert(wires[0] == .Begin or wires[0] == .BeginPinned);
         var ends: [2]EndData = undefined;
-        const w4 = @import("wasm4.zig");
         for (wires) |wire| {
             switch (wire) {
                 .Begin => |coord| {
                     ends[0] = .{ .coord = coord, .anchored = false };
                     ends[1] = ends[0];
-                    w4.tracef("[getEnds] Begin (%d, %d)", coord.val[0], coord.val[1]);
                 },
                 .BeginPinned => |coord| {
                     ends[0] = .{ .coord = coord, .anchored = true };
                     ends[1] = ends[0];
-                    w4.tracef("[getEnds] BeginPinned (%d, %d)", coord.val[0], coord.val[1]);
                 },
                 .Point => |offset| {
                     ends[1] = .{ .coord = ends[1].coord.addOffset(offset), .anchored = false };
-                    const o1 = @intCast(i32, offset[0]);
-                    const o2 = @intCast(i32, offset[1]);
-                    w4.tracef("[getEnds] Point (%d, %d)", o1, o2);
                 },
                 .PointPinned => |offset| {
                     ends[1] = .{ .coord = ends[1].coord.addOffset(offset), .anchored = true };
-                    const o1 = @intCast(i32, offset[0]);
-                    const o2 = @intCast(i32, offset[1]);
-                    w4.tracef("[getEnds] Point Pinned (%d, %d)", o1, o2);
                 },
                 .End => {
                     return ends;
@@ -859,14 +854,30 @@ pub const Database = struct {
 
     /// Remove a wire slice from the wires array. Invalidates handles returned from findWire
     pub fn deleteWire(database: *Database, wire: [2]usize) void {
+        const w4 = @import("wasm4.zig");
         const wire_size = wire[1] - wire[0];
-        std.mem.rotate(Wire, database.wires, wire_size);
+        if (wire[0] + wire_size == database.wire_count) {
+            database.wire_count -= wire_size;
+            return;
+        }
+        const wires_end = database.wires[wire[0] + wire_size .. database.wire_count];
+        const new_end = database.wires[wire[0] .. database.wire_count - wire_size];
+        w4.tracef("%d, %d, %d", wire_size, wires_end.len, new_end.len);
+        std.mem.copy(Wire, new_end, wires_end);
         database.wire_count -= wire_size;
     }
 
     /// Retrieve the slice of the wire from findWire
     pub fn getWire(database: *Database, wire: [2]usize) []Wire {
         return database.wires[wire[0]..wire[1]];
+    }
+
+    /// Retrieve the slice of the wire from findWire
+    pub fn addWire(database: *Database, wire: []Wire) void {
+        const start = database.wire_count;
+        const end = start + wire.len;
+        std.mem.copy(Wire, database.wires[start..end], wire);
+        database.wire_count += wire.len;
     }
 
     /// Find a wire within the limits of a given level
@@ -891,7 +902,7 @@ pub const Database = struct {
                 .End => {
                     if (node_begin) |node| {
                         if (wire_count == num) {
-                            return [2]usize{node, i + 1};
+                            return [2]usize{ node, i + 1 };
                         }
                         wire_count += 1;
                         node_begin = null;
