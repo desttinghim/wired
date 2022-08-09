@@ -3610,6 +3610,20 @@
 									"params": [ true ]
 								}, null ] }
 							]
+						},
+						{
+							"__identifier": "Coin",
+							"__grid": [8,5],
+							"__pivot": [0,0],
+							"__tags": [],
+							"__tile": { "tilesetUid": 1, "x": 32, "y": 0, "w": 8, "h": 8 },
+							"__smartColor": "#E2D547",
+							"iid": "7c1eeee0-02f0-11ed-9529-a1263487e397",
+							"width": 8,
+							"height": 8,
+							"defUid": 61,
+							"px": [64,40],
+							"fieldInstances": []
 						}
 					]
 				},

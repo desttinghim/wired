@@ -141,7 +141,7 @@ fn randRangeF(min: f32, max: f32) f32 {
 }
 
 // Allocators
-var fba_buf: [8192]u8 = undefined;
+var fba_buf: [4096]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&fba_buf);
 var alloc = fba.allocator();
 
@@ -149,7 +149,7 @@ var frame_fba_buf: [8192]u8 = undefined;
 var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
 var frame_alloc = frame_fba.allocator();
 
-var db_fba_buf: [2046]u8 = undefined;
+var db_fba_buf: [4096]u8 = undefined;
 var db_fba = std.heap.FixedBufferAllocator.init(&db_fba_buf);
 var db_alloc = db_fba.allocator();
 
@@ -357,7 +357,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
             const lvl = db.findLevel(x, y) orelse return error.NoLevelUp;
 
             try loadLevel(lvl);
-            player.pos.pos[1] = 160;
+            player.pos.pos[1] = 159;
         },
         .D => {
             const x = level.world_x;
@@ -365,7 +365,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
             const lvl = db.findLevel(x, y) orelse return error.NoLevelDown;
 
             try loadLevel(lvl);
-            player.pos.pos[1] = @intToFloat(f32, player.sprite.size[1]);
+            player.pos.pos[1] = @intToFloat(f32, player.sprite.size[1]) - 4;
         },
     }
     player.pos.last = player.pos.pos - velocity;
@@ -439,7 +439,7 @@ pub fn update(time: usize) !State {
     if (player.pos.pos[0] > 160 - 4) try moveLevel(.R);
     if (player.pos.pos[0] < 4) try moveLevel(.L);
     if (player.pos.pos[1] > 160) try moveLevel(.D);
-    if (player.pos.pos[1] < 8) try moveLevel(.U);
+    if (player.pos.pos[1] < 4) try moveLevel(.U);
 
     try kinematicProcess(1, &player.pos, &player.kinematic);
     controlAnimProcess(1, &player.sprite, &player.controlAnim, &player.control);
@@ -461,7 +461,8 @@ pub fn update(time: usize) !State {
                 try remove.append(i);
                 music.playCollect(score);
                 shouldSave = true;
-                const coord = world.Coordinate.fromVec2(util.world2cell(coin.pos.pos));
+                const levelc = world.Coordinate.fromWorld(level.world_x, level.world_y);
+                const coord = world.Coordinate.fromVec2(util.world2cell(coin.pos.pos)).addC(levelc);
                 db.collectCoin(coord);
             }
         }
@@ -713,7 +714,7 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                         };
                         const x = level.world_x * 20 + @intCast(i16, cell[0]);
                         const y = level.world_y * 20 + @intCast(i16, cell[1]);
-                        w4.tracef("---- Updating switch (%d, %d)", x, y);
+
                         db.setSwitch(Coord.init(.{ x, y }), new_state);
                     }
                     try updateCircuit();
@@ -743,8 +744,6 @@ fn updateCircuit() !void {
             @intCast(i16, cellEnd[0]),
             @intCast(i16, cellEnd[1]),
         }).addC(topleft);
-
-        w4.tracef("p1 %d, %d \t p2 %d, %d", p1.val[0], p1.val[1], p2.val[0], p2.val[1]);
 
         db.connectPlugs(p1, p2) catch {
             w4.tracef("connect plugs error");

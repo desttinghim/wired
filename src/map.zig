@@ -73,7 +73,7 @@ pub fn set_cell(this: *@This(), cell: Cell, tile: u8) !void {
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
     const x = cell[0];
     const y = cell[1];
-    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
+    if (x < 0 or x >= this.map_size[0] or y < 0 or y >= this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
     return this.tiles[@intCast(u32, i)];
 }
@@ -106,7 +106,7 @@ pub fn draw(this: @This(), offset: Vec2) void {
 
 /// pos should be in tile coordinates, not world coordinates
 fn getTile(this: @This(), x: i32, y: i32) ?u8 {
-    if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return null;
+    if (x < 0 or x >= this.map_size[0] or y < 0 or y >= this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
     return this.tiles[@intCast(u32, i)];
 }
