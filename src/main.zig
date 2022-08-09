@@ -38,6 +38,7 @@ export fn update() void {
             error.NoLevelUp => showErr(@errorName(e)),
             error.NoLevelLeft => showErr(@errorName(e)),
             error.NoLevelRight => showErr(@errorName(e)),
+            error.MissingEnds => showErr(@errorName(e)),
         },
     };
     if (state != newState) {
@@ -52,6 +53,7 @@ export fn update() void {
                 error.NullTiles => showErr(@errorName(e)),
                 error.SpawnOutOfBounds => showErr(@errorName(e)),
                 error.InvalidLevel => showErr(@errorName(e)),
+                error.MissingEnds => showErr(@errorName(e)),
             },
         }
     }

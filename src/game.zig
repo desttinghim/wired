@@ -149,7 +149,7 @@ var frame_fba_buf: [8192]u8 = undefined;
 var frame_fba = std.heap.FixedBufferAllocator.init(&frame_fba_buf);
 var frame_alloc = frame_fba.allocator();
 
-var db_fba_buf: [1024]u8 = undefined;
+var db_fba_buf: [2046]u8 = undefined;
 var db_fba = std.heap.FixedBufferAllocator.init(&db_fba_buf);
 var db_alloc = db_fba.allocator();
 
@@ -226,9 +226,11 @@ fn loadLevel(lvl: usize) !void {
     {
         _ = try wires.resize(0);
         var a: usize = 0;
-        while (db.getWire(level, a)) |wire| : (a += 1) {
+        while (db.getWire(level, a)) |wireSlice| : (a += 1) {
+            const wire = try world.Wire.getEnds(wireSlice);
             const coord0 = wire[0].coord.subC(levelc);
             const coord1 = wire[1].coord.subC(levelc);
+            w4.tracef("---- Wire (%d, %d), (%d, %d)", coord0.val[0], coord0.val[1], coord1.val[0], coord1.val[1]);
             const p1 = util.vec2ToVec2f(coord0.toVec2() * tile_size + Vec2{ 4, 4 });
             const p2 = util.vec2ToVec2f(coord1.toVec2() * tile_size + Vec2{ 4, 4 });
 
@@ -243,8 +245,8 @@ fn loadLevel(lvl: usize) !void {
             w.begin().pos = p1;
             w.end().pos = p2;
 
-            w.begin().pinned = wire[0].kind == world.EntityKind.WireAnchor;
-            w.end().pinned = wire[1].kind == world.EntityKind.WireEndAnchor;
+            w.begin().pinned = wire[0].anchored;
+            w.end().pinned = wire[1].anchored;
 
             w.straighten();
         }
@@ -530,6 +532,7 @@ pub fn update(time: usize) !State {
     return .Game;
 }
 
+/// Holds data related to selecting/interacting with the world
 const Interaction = struct {
     pos: Vec2,
     details: union(enum) {

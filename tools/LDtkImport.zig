@@ -58,6 +58,9 @@ fn make(step: *std.build.Step) !void {
     var entity_array = std.ArrayList(world.Entity).init(allocator);
     defer entity_array.deinit();
 
+    var wires = std.ArrayList(world.Wire).init(allocator);
+    defer wires.deinit();
+
     for (ldtk.levels) |level| {
         std.log.warn("Level: {}", .{levels.items.len});
         const parsed_level = try parseLevel(.{
@@ -65,6 +68,7 @@ fn make(step: *std.build.Step) !void {
             .ldtk = ldtk,
             .level = level,
             .entity_array = &entity_array,
+            .wires = &wires,
         });
 
         try levels.append(parsed_level);
@@ -78,6 +82,10 @@ fn make(step: *std.build.Step) !void {
     // TODO
     for (circuit.items) |node, i| {
         std.log.warn("{:0>2}: {}", .{ i, node });
+    }
+
+    for (wires.items) |node, i| {
+        std.log.warn("Wire {:0>2}: {any}", .{ i, node });
     }
 
     // Calculate the offset of each level and store it in the headers.
@@ -109,7 +117,14 @@ fn make(step: *std.build.Step) !void {
     defer data.deinit();
     const writer = data.writer();
 
-    try world.write(writer, level_headers.items, entity_array.items, circuit.items, levels.items);
+    try world.write(
+        writer,
+        level_headers.items,
+        entity_array.items,
+        wires.items,
+        circuit.items,
+        levels.items,
+    );
 
     // Open output file and write data into it
     cwd.makePath(this.builder.getInstallPath(.lib, "")) catch |e| switch (e) {
@@ -127,11 +142,13 @@ fn parseLevel(opt: struct {
     ldtk: LDtk.Root,
     level: LDtk.Level,
     entity_array: *std.ArrayList(world.Entity),
+    wires: *std.ArrayList(world.Wire),
 }) !world.Level {
     const ldtk = opt.ldtk;
     const level = opt.level;
     const entity_array = opt.entity_array;
     const allocator = opt.allocator;
+    const wires = opt.wires;
 
     const layers = level.layerInstances orelse return error.NoLayers;
 
@@ -147,11 +164,12 @@ fn parseLevel(opt: struct {
             std.debug.assert(layer.__type == .Entities);
 
             for (layer.entityInstances) |entity| {
+                var is_wire = false;
                 var kind_opt: ?world.EntityKind = null;
                 if (std.mem.eql(u8, entity.__identifier, "Player")) {
                     kind_opt = .Player;
                 } else if (std.mem.eql(u8, entity.__identifier, "Wire")) {
-                    kind_opt = .WireNode;
+                    is_wire = true;
                 } else if (std.mem.eql(u8, entity.__identifier, "Coin")) {
                     kind_opt = .Coin;
                 } else if (std.mem.eql(u8, entity.__identifier, "Door")) {
@@ -160,59 +178,57 @@ fn parseLevel(opt: struct {
                     kind_opt = .Trapdoor;
                 }
 
+                const levelc = world.Coordinate.fromWorld(world_x, world_y);
                 // Parsing code for wire entities. They're a little more complex
                 // than the rest
                 if (kind_opt) |kind| {
-                    const levelc = world.Coordinate.fromWorld(world_x, world_y);
-                    if (kind != .WireNode) {
-                        const entc = world.Coordinate.init(.{
-                            @intCast(i16, entity.__grid[0]),
-                            @intCast(i16, entity.__grid[1]),
-                        });
-                        const world_entity = world.Entity{
-                            .kind = kind,
-                            .coord = levelc.addC(entc)
-                        };
-                        try entity_array.append(world_entity);
-                    } else {
-                        var anchor1 = false;
-                        var anchor2 = false;
-                        const p1_c = world.Coordinate.init(.{
-                            @intCast(i16, entity.__grid[0]),
-                            @intCast(i16, entity.__grid[1]),
-                        });
-                        var p2_c = world.Coordinate.init(.{
-                            @intCast(i16, entity.__grid[0]),
-                            @intCast(i16, entity.__grid[1]),
-                        });
-                        for (entity.fieldInstances) |field| {
-                            if (std.mem.eql(u8, field.__identifier, "Anchor")) {
-                                const anchors = field.__value.Array.items;
-                                anchor1 = anchors[0].Bool;
-                                anchor2 = anchors[1].Bool;
-                            } else if (std.mem.eql(u8, field.__identifier, "Point")) {
-                                const end = field.__value.Array.items.len - 1;
-                                const endpoint = field.__value.Array.items[end];
-                                const x = endpoint.Object.get("cx").?;
-                                const y = endpoint.Object.get("cy").?;
-                                p2_c.val = .{
-                                    @intCast(i16, x.Integer),
-                                    @intCast(i16, y.Integer),
-                                };
-                            }
+                    const entc = world.Coordinate.init(.{
+                        @intCast(i16, entity.__grid[0]),
+                        @intCast(i16, entity.__grid[1]),
+                    });
+                    const world_entity = world.Entity{ .kind = kind, .coord = levelc.addC(entc) };
+                    try entity_array.append(world_entity);
+                }
+                if (is_wire) {
+                    var anchor1 = false;
+                    var anchor2 = false;
+                    const p1_c = world.Coordinate.init(.{
+                        @intCast(i16, entity.__grid[0]),
+                        @intCast(i16, entity.__grid[1]),
+                    });
+                    var p2_c = world.Coordinate.init(.{
+                        @intCast(i16, entity.__grid[0]),
+                        @intCast(i16, entity.__grid[1]),
+                    });
+                    for (entity.fieldInstances) |field| {
+                        if (std.mem.eql(u8, field.__identifier, "Anchor")) {
+                            const anchors = field.__value.Array.items;
+                            anchor1 = anchors[0].Bool;
+                            anchor2 = anchors[1].Bool;
+                        } else if (std.mem.eql(u8, field.__identifier, "Point")) {
+                            const end = field.__value.Array.items.len - 1;
+                            const endpoint = field.__value.Array.items[end];
+                            const x = endpoint.Object.get("cx").?;
+                            const y = endpoint.Object.get("cy").?;
+                            p2_c.val = .{
+                                @intCast(i16, x.Integer),
+                                @intCast(i16, y.Integer),
+                            };
                         }
-                        const wire_begin = world.Entity{
-                            .kind = if (anchor1) .WireAnchor else .WireNode,
-                            .coord = p1_c.addC(levelc),
-                        };
-                        try entity_array.append(wire_begin);
-
-                        const wire_end = world.Entity{
-                            .kind = if (anchor2) .WireEndAnchor else .WireEndNode,
-                            .coord = p2_c.addC(levelc),
-                        };
-                        try entity_array.append(wire_end);
                     }
+
+                    if (anchor1) {
+                        try wires.append(.{ .BeginPinned = p1_c.addC(levelc) });
+                    } else {
+                        try wires.append(.{ .Begin = p1_c.addC(levelc) });
+                    }
+
+                    if (anchor2) {
+                        try wires.append(.{ .PointPinned = p2_c.subC(p1_c).toOffset() });
+                    } else {
+                        try wires.append(.{ .Point = p2_c.subC(p1_c).toOffset() });
+                    }
+                    try wires.append(.End);
                 }
             }
 

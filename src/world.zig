@@ -190,6 +190,10 @@ pub const Coordinate = struct {
         return .{ .val = .{ coord.val[0] - other.val[0], coord.val[1] - other.val[1] } };
     }
 
+    pub fn addOffset(coord: Coordinate, val: [2]i4) Coordinate {
+        return .{ .val = .{ coord.val[0] + val[0], coord.val[1] + val[1] } };
+    }
+
     pub fn eq(coord: Coordinate, other: Coordinate) bool {
         return coord.val[0] == other.val[0] and coord.val[1] == other.val[1];
     }
@@ -207,6 +211,10 @@ pub const Coordinate = struct {
 
     pub fn toVec2(coord: Coordinate) @Vector(2, i32) {
         return .{ coord.val[0], coord.val[1] };
+    }
+
+    pub fn toOffset(coord: Coordinate) [2]i4 {
+        return .{ @intCast(i4, coord.val[0]), @intCast(i4, coord.val[1]) };
     }
 
     pub fn fromWorld(x: i8, y: i8) Coordinate {
@@ -429,10 +437,6 @@ pub const AutoTileset = struct {
 pub const EntityKind = enum(u8) {
     Player,
     Coin,
-    WireNode,
-    WireAnchor,
-    WireEndNode,
-    WireEndAnchor,
     Door,
     Trapdoor,
     Collected,
@@ -461,12 +465,109 @@ pub const Entity = struct {
     }
 };
 
-// Data format:
-// | level count | node count |
-// | level headers...         |
-// | node data...             |
-// | level data...            |
+const WireKind = enum {
+    Begin,
+    BeginPinned,
+    Point,
+    PointPinned,
+    End,
+};
 
+/// A wire is stored as a coordinate and at least one point relative to it,
+/// and then an end byte
+pub const Wire = union(enum) {
+    Begin: Coordinate,
+    BeginPinned: Coordinate,
+    /// Relative to the last point
+    Point: [2]i4,
+    /// Relative to the last point
+    PointPinned: [2]i4,
+    End,
+
+    const EndData = struct { coord: Coordinate, anchored: bool };
+
+    pub fn getEnds(wires: []Wire) ![2]EndData {
+        std.debug.assert(wires[0] == .Begin or wires[0] == .BeginPinned);
+        var ends: [2]EndData = undefined;
+        const w4 = @import("wasm4.zig");
+        for (wires) |wire| {
+            switch (wire) {
+                .Begin => |coord| {
+                    ends[0] = .{ .coord = coord, .anchored = false };
+                    ends[1] = ends[0];
+                    w4.tracef("[getEnds] Begin (%d, %d)", coord.val[0], coord.val[1]);
+                },
+                .BeginPinned => |coord| {
+                    ends[0] = .{ .coord = coord, .anchored = true };
+                    ends[1] = ends[0];
+                    w4.tracef("[getEnds] BeginPinned (%d, %d)", coord.val[0], coord.val[1]);
+                },
+                .Point => |offset| {
+                    ends[1] = .{ .coord = ends[1].coord.addOffset(offset), .anchored = false };
+                    const o1 = @intCast(i32, offset[0]);
+                    const o2 = @intCast(i32, offset[1]);
+                    w4.tracef("[getEnds] Point (%d, %d)", o1, o2);
+                },
+                .PointPinned => |offset| {
+                    ends[1] = .{ .coord = ends[1].coord.addOffset(offset), .anchored = true };
+                    const o1 = @intCast(i32, offset[0]);
+                    const o2 = @intCast(i32, offset[1]);
+                    w4.tracef("[getEnds] Point Pinned (%d, %d)", o1, o2);
+                },
+                .End => {
+                    return ends;
+                },
+            }
+        }
+        return error.MissingEnds;
+    }
+
+    pub fn write(wire: Wire, writer: anytype) !void {
+        try writer.writeByte(@enumToInt(wire));
+        switch (wire) {
+            .Begin => |coord| {
+                try coord.write(writer);
+            },
+            .BeginPinned => |coord| {
+                try coord.write(writer);
+            },
+            .Point => |point| {
+                const byte = @bitCast(u8, @intCast(i8, point[0])) | @bitCast(u8, @intCast(i8, point[1])) << 4;
+                try writer.writeByte(byte);
+            },
+            .PointPinned => |point| {
+                const byte = @bitCast(u8, @intCast(i8, point[0])) | @bitCast(u8, @intCast(i8, point[1])) << 4;
+                try writer.writeByte(byte);
+            },
+            .End => {},
+        }
+    }
+
+    pub fn read(reader: anytype) !Wire {
+        const kind = @intToEnum(WireKind, try reader.readByte());
+        switch (kind) {
+            .Begin => return Wire{ .Begin = try Coord.read(reader) },
+            .BeginPinned => return Wire{ .BeginPinned = try Coord.read(reader) },
+            .Point => {
+                const byte = try reader.readByte();
+                return Wire{ .Point = .{
+                    @bitCast(i4, @truncate(u4, 0b0000_1111 & byte)),
+                    @bitCast(i4, @truncate(u4, (0b1111_0000 & byte) >> 4)),
+                } };
+            },
+            .PointPinned => {
+                const byte = try reader.readByte();
+                return Wire{ .PointPinned = .{
+                    @bitCast(i4, @truncate(u4, 0b0000_1111 & byte)),
+                    @bitCast(i4, @truncate(u4, (0b1111_0000 & byte) >> 4)),
+                } };
+            },
+            .End => return Wire.End,
+        }
+    }
+};
+
+/// Used to look up level data
 pub const LevelHeader = struct {
     x: i8,
     y: i8,
@@ -491,6 +592,7 @@ pub fn write(
     writer: anytype,
     level_headers: []LevelHeader,
     entities: []Entity,
+    wires: []Wire,
     circuit_nodes: []CircuitNode,
     levels: []Level,
 ) !void {
@@ -498,6 +600,8 @@ pub fn write(
     try writer.writeInt(u16, @intCast(u16, level_headers.len), .Little);
     // Write number of entities
     try writer.writeInt(u16, @intCast(u16, entities.len), .Little);
+    // Write number of entities
+    try writer.writeInt(u16, @intCast(u16, wires.len), .Little);
     // Write number of circuit nodes
     try writer.writeInt(u16, @intCast(u16, circuit_nodes.len), .Little);
 
@@ -509,6 +613,11 @@ pub fn write(
     // Write entity data
     for (entities) |entity| {
         try entity.write(writer);
+    }
+
+    // Write wire data
+    for (wires) |wire| {
+        try wire.write(writer);
     }
 
     // Write node data
@@ -527,6 +636,8 @@ pub const Database = struct {
     cursor: Cursor,
     level_info: []LevelHeader,
     entities: []Entity,
+    wires: []Wire,
+    wire_count: usize,
     circuit_info: []CircuitNode,
     level_data_begin: usize,
 
@@ -544,6 +655,8 @@ pub const Database = struct {
         const level_count = try reader.readInt(u16, .Little);
         // read number of entities
         const entity_count = try reader.readInt(u16, .Little);
+        // read number of wires
+        const wire_count = try reader.readInt(u16, .Little);
         // read number of nodes
         const node_count = try reader.readInt(u16, .Little);
 
@@ -561,6 +674,16 @@ pub const Database = struct {
             entities[i] = try Entity.read(reader);
         }
 
+        // read wires
+        // Allocate a fixed amount of space since wires are likely to be shuffled around
+        var wires = try alloc.alloc(Wire, 255);
+        {
+            var i: usize = 0;
+            while (i < wire_count) : (i += 1) {
+                wires[i] = try Wire.read(reader);
+            }
+        }
+
         // read circuits
         var circuit_nodes = try alloc.alloc(CircuitNode, node_count);
 
@@ -575,6 +698,8 @@ pub const Database = struct {
             .cursor = cursor,
             .level_info = level_headers,
             .entities = entities,
+            .wires = wires,
+            .wire_count = wire_count,
             .circuit_info = circuit_nodes,
             .level_data_begin = level_data_begin,
         };
@@ -732,20 +857,33 @@ pub const Database = struct {
         db.entities[coin].kind = .Collected;
     }
 
-    pub fn getWire(database: *Database, level: Level, num: usize) ?[2]Entity {
+    pub fn getWire(database: *Database, level: Level, num: usize) ?[]Wire {
         const nw = Coord.fromWorld(level.world_x, level.world_y);
         const se = nw.add(.{ 20, 20 });
-        var node_begin: ?Entity = null;
+        var node_begin: ?usize = null;
         var wire_count: usize = 0;
-        for (database.entities) |entity| {
-            if (!entity.coord.within(nw, se)) continue;
-            if (entity.kind == .WireNode or entity.kind == .WireAnchor) {
-                node_begin = entity;
-            } else if (entity.kind == .WireEndNode or entity.kind == .WireEndAnchor) {
-                if (node_begin) |begin| {
-                    if (wire_count == num) return [2]Entity{ begin, entity };
-                }
-                wire_count += 1;
+        var i: usize = 0;
+        while (i < database.wire_count) : (i += 1) {
+            const wire = database.wires[i];
+            switch (wire) {
+                .Begin => |coord| {
+                    if (!coord.within(nw, se)) continue;
+                    node_begin = i;
+                },
+                .BeginPinned => |coord| {
+                    if (!coord.within(nw, se)) continue;
+                    node_begin = i;
+                },
+                .Point, .PointPinned => continue,
+                .End => {
+                    if (node_begin) |node| {
+                        if (wire_count == num) {
+                            return database.wires[node..i + 1];
+                        }
+                        wire_count += 1;
+                        node_begin = null;
+                    }
+                },
             }
         }
         return null;
