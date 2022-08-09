@@ -299,17 +299,13 @@ const Queue = util.Queue(Cell);
 pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
     var count: usize = 0;
 
-    var items = try alloc.alloc(usize, MAXCELLS);
-    defer alloc.free(items);
-
-    var visited = util.Buffer(usize).init(items);
-
     var q_buf = try alloc.alloc(Cell, MAXCELLS);
     var q = Queue.init(q_buf);
 
     for (this.sources.items) |source| {
         try q.insert(source);
     }
+
     while (q.remove()) |cell| {
         const tile = this.get_cell(cell) orelse {
             for (this.doors.items) |*d| {
@@ -320,10 +316,9 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
             continue;
         };
         const index = this.indexOf(cell) orelse continue;
+        const hasVisited = this.levels[index] != 0;
         this.enable(cell);
-        const hasVisited = std.mem.containsAtLeast(usize, visited.items, 1, &.{index});
         if (hasVisited and !T.is_logic(tile)) continue;
-        visited.append(index);
         count += 1;
         if (get_logic(tile)) |logic| {
             // TODO: implement other logic (though I'm pretty sure that requires a graph...)
