@@ -337,6 +337,27 @@ pub const Level = struct {
         }
         return null;
     }
+
+    pub fn getSwitch(level: Level, which: usize) ?Coordinate {
+        const tiles = level.tiles orelse return null;
+        var switchCount: usize = 0;
+        for (tiles) |tile, i| {
+            switch (tile) {
+                .flags => |flag| {
+                    if (flag.circuit == .Switch_Off or flag.circuit == .Switch_On) {
+                        if (switchCount == which) {
+                            const x = @intCast(i16, @mod(i, 20));
+                            const y = @intCast(i16, @divFloor(i, 20));
+                            return Coord.init(.{ x, y });
+                        }
+                        switchCount += 1;
+                    }
+                },
+                else => continue,
+            }
+        }
+        return null;
+    }
 };
 
 // AutoTile algorithm datatypes
@@ -758,6 +779,11 @@ pub const Database = struct {
             if (!plug.eq(node.coord)) continue;
             db.circuit_info[i].energized = false;
         }
+    }
+
+    pub fn getSwitchState(db: *Database, coord: Coord) ?u8 {
+        const _switch = db.getNodeID(coord) orelse return null;
+        return db.circuit_info[_switch].kind.Switch.state;
     }
 
     pub fn setSwitch(db: *Database, coord: Coord, new_state: u8) void {

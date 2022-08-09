@@ -7,6 +7,24 @@ const T = world.Tiles;
 const Vec2 = util.Vec2;
 const Cell = util.Cell;
 
+pub fn switchIsOn(tile: u8) bool {
+    return switch (tile) {
+        T.SwitchTeeWestOn,
+        T.SwitchTeeEastOn,
+        T.SwitchVerticalOn,
+        T.SwitchHorizontalOn,
+        => true,
+
+        T.SwitchTeeWestOff,
+        T.SwitchTeeEastOff,
+        T.SwitchVerticalOff,
+        T.SwitchHorizontalOff,
+        => false,
+
+        else => false,
+    };
+}
+
 pub fn toggle_switch(tile: u8) u8 {
     return switch (tile) {
         // Tee west
@@ -228,6 +246,17 @@ pub fn enabledDoors(this: @This(), alloc: std.mem.Allocator) !util.Buffer(Cell) 
 pub fn isEnabled(this: @This(), cell: Cell) bool {
     const i = this.indexOf(cell) orelse return false;
     return this.levels[i] >= 1;
+}
+
+pub fn switchOn(this: *@This(), cell: Cell) void {
+    if (this.get_cell(cell)) |tile| {
+        if (T.is_switch(tile)) {
+            if (switchIsOn(tile)) return;
+            const toggled = toggle_switch(tile);
+            this.set_cell(cell, toggled);
+            return;
+        }
+    }
 }
 
 pub fn toggle(this: *@This(), c: Cell) ?u8 {
