@@ -480,7 +480,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // Add switch outlets
                         if (input_dir != .West and west) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{1, 0});
+                            const new_coord = coord.add(.{-1, 0});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -499,7 +499,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .East and east) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{-1, 0});
+                            const new_coord = coord.add(.{1, 0});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -614,9 +614,18 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                 });
                             }
                             try multi_input.put(coord, next_node);
+                            const up = try alloc.create(Node);
+                            up.* = Node{ .data = .{
+                                .last_node = next_node,
+                                .coord = coord.add(.{ 0, -1 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(up);
+                            continue;
                         }
                     },
                     .Xor => {
+                        std.log.warn("XOR XOR XOR",.{});
                         // TODO: verify Xor gate is properly connected
                         const last_coord = node.data.last_coord.?;
                         const Side = enum { O, L, R };
@@ -660,6 +669,14 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                                 });
                             }
                             try multi_input.put(coord, next_node);
+                            const up = try alloc.create(Node);
+                            up.* = Node{ .data = .{
+                                .last_node = next_node,
+                                .coord = coord.add(.{ 0, -1 }),
+                                .last_coord = coord,
+                            } };
+                            bfs_queue.append(up);
+                            continue;
                         }
                     },
                     .None => continue,
@@ -695,6 +712,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 bfs_queue.append(left);
                 bfs_queue.append(down);
                 bfs_queue.append(up);
+
             }
         }
     }

@@ -341,6 +341,23 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator, db: world.Database, level:
             try q.insert(.{ .node_id = new_id, .coord = node.coord.add(.{ 0, -1 }) });
             continue;
         }
+        if (T.is_switch(tile)) {
+            const n = node.coord.add(.{0,-1}) ;
+            const w = node.coord.add(.{-1,0}) ;
+            const e = node.coord.add(.{1,0}) ;
+            const s = node.coord.add(.{0,1}) ;
+
+            const nid = db.getLevelNodeID(level, n) ;
+            const wid = db.getLevelNodeID(level, w) ;
+            const eid = db.getLevelNodeID(level, e) ;
+            const sid = db.getLevelNodeID(level, s) ;
+
+            if(nid) |new_id| try q.insert(.{ .node_id = new_id, .coord = n });
+            if(wid) |new_id| try q.insert(.{ .node_id = new_id, .coord = w });
+            if(eid) |new_id| try q.insert(.{ .node_id = new_id, .coord = e });
+            if(sid) |new_id| try q.insert(.{ .node_id = new_id, .coord = s });
+            continue;
+        }
         for (get_outputs(tile)) |conductor, i| {
             // w4.tracef("[fill] outputs");
             if (!conductor) continue;
