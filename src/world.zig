@@ -766,9 +766,9 @@ pub const Database = struct {
         return db.getNodeID(coord.addC(levelc));
     }
 
-    pub fn connectPlugs(db: *Database, p1: Coord, p2: Coord) !void {
-        const p1id = db.getNodeID(p1) orelse return;
-        const p2id = db.getNodeID(p2) orelse return;
+    pub fn connectPlugs(db: *Database, level: Level, p1: Coord, p2: Coord) !void {
+        const p1id = db.getLevelNodeID(level, p1) orelse return;
+        const p2id = db.getLevelNodeID(level, p2) orelse return;
 
         if (db.circuit_info[p1id].kind == .Plug and db.circuit_info[p2id].kind == .Socket) {
             db.circuit_info[p2id].kind.Socket = p1id;
@@ -779,10 +779,19 @@ pub const Database = struct {
         }
     }
 
-    pub fn disconnectPlug(db: *Database, plug: Coord) void {
+    pub fn disconnectPlug(db: *Database, level: Level, plug1: Coord, plug2: Coord) void {
+        const levelc = Coord.fromWorld(level.world_x, level.world_y);
+        const coord1 = plug1.addC(levelc);
+        const coord2 = plug2.addC(levelc);
+        var found: usize = 0;
         for (db.circuit_info) |node, i| {
-            if (!plug.eq(node.coord)) continue;
-            db.circuit_info[i].energized = false;
+            if (!coord1.eq(node.coord) and !coord2.eq(node.coord)) continue;
+            found += 1;
+            if (db.circuit_info[i].kind == .Socket) {
+                db.circuit_info[i].kind.Socket = null;
+                db.circuit_info[i].energized = false;
+                break;
+            }
         }
     }
 

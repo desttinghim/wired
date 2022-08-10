@@ -697,17 +697,19 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
             switch (i.details) {
                 .wire => |wire| {
                     control.grabbing = .{ .id = wire.id, .which = wire.which };
-                    wires.slice()[wire.id].nodes.slice()[wire.which].pos = pos.pos + Vec2f{ 0, -4 };
-                    wires.slice()[wire.id].nodes.slice()[wire.which].pinned = false;
-                    const local32 = vec2ftovec2(wires.slice()[wire.id].nodes.slice()[wire.which].pos / @splat(2, @as(f32, 8)));
-                    const x = level.world_x * 20 + @intCast(i16, local32[0]);
-                    const y = level.world_y * 20 + @intCast(i16, local32[1]);
-                    db.disconnectPlug(Coord.init(.{ x, y }));
+                    var wireStruct = wires.slice()[wire.id];
+                    const wireSlice = wires.slice()[wire.id].nodes.slice();
+                    wireSlice[wire.which].pos = pos.pos + Vec2f{ 0, -4 };
+                    wireSlice[wire.which].pinned = false;
+                    const coord1 = Coord.fromVec2(util.world2cell(wireStruct.begin().pos));
+                    const coord2 = Coord.fromVec2(util.world2cell(wireStruct.end().pos));
+                    db.disconnectPlug(level, coord1, coord2);
                     try updateCircuit();
                 },
                 .plug => |plug| {
-                    wires.slice()[plug.wireID].nodes.slice()[plug.which].pos = vec2tovec2f(indicator.?.pos);
-                    wires.slice()[plug.wireID].nodes.slice()[plug.which].pinned = true;
+                    const wireSlice = wires.slice()[plug.wireID].nodes.slice();
+                    wireSlice[plug.which].pos = vec2tovec2f(indicator.?.pos);
+                    wireSlice[plug.which].pinned = true;
                     control.grabbing = null;
                     try updateCircuit();
                 },
@@ -742,11 +744,7 @@ fn updateCircuit() !void {
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
 
-        const topleft = Coord.fromWorld(level.world_x, level.world_y);
-        const globalBegin = cellBegin.addC(topleft);
-        const globalEnd = cellEnd.addC(topleft);
-
-        db.connectPlugs(globalBegin, globalEnd) catch {
+        db.connectPlugs(level, cellBegin, cellEnd) catch {
             w4.tracef("connect plugs error");
         };
     }
@@ -756,15 +754,18 @@ fn updateCircuit() !void {
     // Simulate circuit
     _ = try circuit.fill(frame_alloc, db, level);
     w4.tracef("[updateCircuit] circuit filled");
-    // for (circuit.nodes) |node, i| {
-    //     w4.tracef("%d: %d", i, node);
-    // }
 
     // Energize wires
     {
-        var i: usize = 0;
-        while (circuit.enabledBridge(i)) |wireID| : (i += 1) {
-            wires.slice()[wireID].enabled = true;
+        for (wires.slice()) |*wire| {
+            const begin = wire.begin();
+            const end = wire.end();
+            const coord1 = Coord.fromVec2(util.world2cell(begin.pos));
+            const coord2 = Coord.fromVec2(util.world2cell(end.pos));
+            const energized1 = if (db.getLevelNodeID(level, coord1)) |node| db.circuit_info[node].energized else false;
+            const energized2 = if (db.getLevelNodeID(level, coord2)) |node| db.circuit_info[node].energized else false;
+            if ((energized1 and begin.pinned) or
+                (energized2 and end.pinned)) wire.enabled = true;
         }
     }
 
@@ -783,22 +784,29 @@ fn updateCircuit() !void {
         }
     }
 
+    w4.tracef("[updateCircuit] end");
+    printCircuit();
+}
+
+fn printCircuit() void {
     for (db.circuit_info) |node, n| {
         const e = @boolToInt(node.energized);
+        const x = node.coord.val[0];
+        const y = node.coord.val[1];
         switch (node.kind) {
-            .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d] <%d>", n, Conduit[0], Conduit[1], e),
-            .And => |And| w4.tracef("[%d]: And [%d, %d] <%d>", n, And[0], And[1], e),
-            .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d] <%d>", n, Xor[0], Xor[1], e),
-            .Source => w4.tracef("[%d]: Source (%d, %d)", n, node.coord.val[0], node.coord.val[1]),
+            .Conduit => |Conduit| w4.tracef("[%d]: Conduit (%d, %d) [%d, %d] <%d>", n, x, y, Conduit[0], Conduit[1], e),
+            .And => |And| w4.tracef("[%d]: And (%d, %d) [%d, %d] <%d>", n, x, y, And[0], And[1], e),
+            .Xor => |Xor| w4.tracef("[%d]: Xor (%d, %d) [%d, %d] <%d>", n, x, y, Xor[0], Xor[1], e),
+            .Source => w4.tracef("[%d]: Source (%d, %d) (%d, %d)", n, x, y, node.coord.val[0], node.coord.val[1]),
             .Socket => |Socket| {
                 const socket = Socket orelse std.math.maxInt(world.NodeID);
-                w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
+                w4.tracef("[%d]: Socket (%d, %d) [%d] <%d>", n, x, y, socket, e);
             },
-            .Plug => |Plug| w4.tracef("[%d]: Plug [%d] <%d>", n, Plug, e),
-            .Switch => |Switch| w4.tracef("[%d]: Switch %d [%d] <%d>", n, Switch.state, Switch.source, e),
-            .SwitchOutlet => |Switch| w4.tracef("[%d]: SwitchOutlet %d [%d] <%d>", n, Switch.which, Switch.source, e),
-            .Join => |Join| w4.tracef("[%d]: Join [%d] <%d>", n, Join, e),
-            .Outlet => |Outlet| w4.tracef("[%d]: Outlet [%d] <%d>", n, Outlet, e),
+            .Plug => |Plug| w4.tracef("[%d]: Plug (%d, %d) [%d] <%d>", n, x, y, Plug, e),
+            .Switch => |Switch| w4.tracef("[%d]: Switch (%d, %d) %d [%d] <%d>", n, x, y, Switch.state, Switch.source, e),
+            .SwitchOutlet => |Switch| w4.tracef("[%d]: SwitchOutlet (%d, %d) %d [%d] <%d>", n, x, y, Switch.which, Switch.source, e),
+            .Join => |Join| w4.tracef("[%d]: Join (%d, %d) [%d] <%d>", n, x, y, Join, e),
+            .Outlet => |Outlet| w4.tracef("[%d]: Outlet (%d, %d) [%d] <%d>", n, x, y, Outlet, e),
         }
     }
 }

@@ -299,7 +299,7 @@ pub fn clear(this: *@This()) void {
 pub fn reset(this: *@This()) void {
     this.clear();
     // Resizing to zero should always work
-    this.sources.resize(0) catch unreachable;
+    this.sources.reset();
 }
 
 const w4 = @import("wasm4.zig");
