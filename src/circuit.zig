@@ -139,15 +139,15 @@ fn get_plugs(tile: u8) Plugs {
     };
 }
 
-pub fn get_cell(this: @This(), cell: Cell) ?u8 {
-    const i = this.indexOf(cell) orelse return null;
+pub fn getCoord(this: @This(), coord: world.Coordinate) ?u8 {
+    const i = this.indexOf(coord.toVec2()) orelse return null;
     return if (this.map[i] != 0) this.map[i] else null;
 }
 
-pub fn set_cell(this: *@This(), cell: Cell, tile: u8) void {
-    const i = this.indexOf(cell) orelse return;
+pub fn setCoord(this: @This(), coord: world.Coordinate, tile: u8) void {
+    const i = this.indexOf(coord.toVec2()) orelse return;
     this.map[i] = tile;
-    this.levels[i] = 0;
+    // this.levels[i] = 255;
 }
 
 const MAXCELLS = 400;
@@ -156,37 +156,37 @@ const MAXSOURCES = 10;
 const MAXDOORS = 40;
 const MAXLOGIC = 40;
 
-pub const CellData = struct { level: u8 = 0, tile: u8 };
-
-pub const BridgeState = struct { cells: [2]Cell, id: usize, enabled: bool };
-pub const DoorState = struct { cell: Cell, enabled: bool };
+pub const NodeCoord = struct { coord: world.Coordinate, node_id: world.NodeID };
+pub const Source = NodeCoord;
+pub const BridgeState = struct { coords: [2]world.Coordinate, id: usize, enabled: bool };
+pub const DoorState = struct { coord: world.Coordinate, enabled: bool };
 
 /// Tile id of the tiles
 map: []u8,
-/// Logic levels of the tiles
-levels: []u8,
+/// CircuitNode ID for each tile
+nodes: []world.NodeID,
 map_size: Vec2,
 bridges: util.Buffer(BridgeState),
-sources: util.Buffer(Cell),
+sources: util.Buffer(Source),
 doors: util.Buffer(DoorState),
 
 pub const Options = struct {
     map: []u8,
-    levels: []u8,
+    nodes: []u8,
     map_size: Vec2,
     bridges: []BridgeState,
-    sources: []Cell,
+    sources: []Source,
     doors: []DoorState,
 };
 
 pub fn init(opt: Options) @This() {
-    std.debug.assert(opt.map.len == opt.levels.len);
+    std.debug.assert(opt.map.len == opt.nodes.len);
     var this = @This(){
         .map = opt.map,
-        .levels = opt.levels,
+        .nodes = opt.nodes,
         .map_size = opt.map_size,
         .bridges = util.Buffer(BridgeState).init(opt.bridges),
-        .sources = util.Buffer(Cell).init(opt.sources),
+        .sources = util.Buffer(Source).init(opt.sources),
         .doors = util.Buffer(DoorState).init(opt.doors),
     };
     return this;
@@ -197,29 +197,38 @@ pub fn indexOf(this: @This(), cell: Cell) ?usize {
     return @intCast(usize, @mod(cell[0], this.map_size[0]) + (cell[1] * this.map_size[1]));
 }
 
-pub fn enable(this: *@This(), cell: Cell) void {
-    const i = this.indexOf(cell) orelse return;
-    this.levels[i] += 1;
-}
-
-pub fn bridge(this: *@This(), cells: [2]Cell, bridgeID: usize) void {
-    if (this.indexOf(cells[0])) |_| {
-        if (this.indexOf(cells[1])) |_| {
-            this.bridges.append(.{ .cells = cells, .id = bridgeID, .enabled = false });
+pub fn bridge(this: *@This(), coords: [2]world.Coordinate, bridgeID: usize) void {
+    if (this.indexOf(coords[0].toVec2())) |_| {
+        if (this.indexOf(coords[1].toVec2())) |_| {
+            this.bridges.append(.{ .coords = coords, .id = bridgeID, .enabled = false });
         }
     }
 }
 
-pub fn addSource(this: *@This(), cell: Cell) void {
-    if (this.indexOf(cell)) |_| {
-        this.sources.append(cell);
+pub fn addSource(this: *@This(), source: Source) void {
+    w4.tracef("%d, %d", source.coord.val[0], source.coord.val[1]);
+    if (this.indexOf(source.coord.toVec2())) |_| {
+        this.sources.append(source);
     }
 }
 
-pub fn addDoor(this: *@This(), cell: Cell) !void {
-    if (this.indexOf(cell)) |_| {
-        this.doors.append(.{ .cell = cell, .enabled = false });
+pub fn addDoor(this: *@This(), coord: world.Coordinate) !void {
+    if (this.indexOf(coord.toVec2())) |_| {
+        this.doors.append(.{ .coord = coord, .enabled = false });
     }
+}
+
+pub fn enabledBridge(this: @This(), id: usize) ?usize {
+    var count: usize = 0;
+    for (this.bridges.items) |b| {
+        if (b.enabled) {
+            if (count == id) {
+                return b.id;
+            }
+            count += 1;
+        }
+    }
+    return null;
 }
 
 pub fn enabledBridges(this: @This(), alloc: std.mem.Allocator) !util.Buffer(usize) {
@@ -243,28 +252,28 @@ pub fn enabledDoors(this: @This(), alloc: std.mem.Allocator) !util.Buffer(Cell) 
     return buffer;
 }
 
-pub fn isEnabled(this: @This(), cell: Cell) bool {
-    const i = this.indexOf(cell) orelse return false;
-    return this.levels[i] >= 1;
+pub fn getNodeID(this: @This(), coord: world.Coordinate) ?world.NodeID {
+    const i = this.indexOf(coord.toVec2()) orelse return null;
+    if (this.nodes[i] == std.math.maxInt(world.NodeID)) return null;
+    return this.nodes[i];
 }
 
-pub fn switchOn(this: *@This(), cell: Cell) void {
-    if (this.get_cell(cell)) |tile| {
+pub fn switchOn(this: *@This(), coord: world.Coordinate) void {
+    if (this.getCoord(coord)) |tile| {
         if (T.is_switch(tile)) {
             if (switchIsOn(tile)) return;
             const toggled = toggle_switch(tile);
-            this.set_cell(cell, toggled);
+            this.setCoord(coord, toggled);
             return;
         }
     }
 }
 
-pub fn toggle(this: *@This(), c: Cell) ?u8 {
-    const cell = c;
-    if (this.get_cell(cell)) |tile| {
+pub fn toggle(this: *@This(), coord: world.Coordinate) ?u8 {
+    if (this.getCoord(coord)) |tile| {
         if (T.is_switch(tile)) {
             const toggled = toggle_switch(tile);
-            this.set_cell(cell, toggled);
+            this.setCoord(coord, toggled);
             return toggled;
         }
     }
@@ -280,7 +289,7 @@ pub fn clearMap(this: *@This()) void {
 }
 
 pub fn clear(this: *@This()) void {
-    std.mem.set(u8, this.levels, 0);
+    std.mem.set(u8, this.nodes, std.math.maxInt(world.NodeID));
     for (this.doors.items) |*door| {
         door.enabled = false;
     }
@@ -294,70 +303,87 @@ pub fn reset(this: *@This()) void {
 }
 
 const w4 = @import("wasm4.zig");
-const Queue = util.Queue(Cell);
 // Returns number of cells filled
-pub fn fill(this: *@This(), alloc: std.mem.Allocator) !usize {
+pub fn fill(this: *@This(), alloc: std.mem.Allocator, db: world.Database, level: world.Level) !usize {
     var count: usize = 0;
+    w4.tracef("[fill] begin");
 
-    var q_buf = try alloc.alloc(Cell, MAXCELLS);
+    const Queue = util.Queue(NodeCoord);
+    var q_buf = try alloc.alloc(NodeCoord, MAXCELLS);
     var q = Queue.init(q_buf);
 
     for (this.sources.items) |source| {
+        w4.tracef("[fill] inserting source (%d, %d)", source.coord.val[0], source.coord.val[1]);
         try q.insert(source);
     }
+    // if (this.sources.items.len == 0) {
+    //     w4.tracef("[fill] no sources %d", this.sources.items.len);
+    // }
 
-    while (q.remove()) |cell| {
-        const tile = this.get_cell(cell) orelse {
-            for (this.doors.items) |*d| {
-                if (@reduce(.And, d.cell == cell)) {
-                    d.enabled = true;
-                }
-            }
-            continue;
-        };
-        const index = this.indexOf(cell) orelse continue;
-        const hasVisited = this.levels[index] != 0;
-        this.enable(cell);
-        if (hasVisited and !T.is_logic(tile)) continue;
+    while (q.remove()) |node| {
+        const tile = this.getCoord(node.coord) orelse continue;
+        const index = this.indexOf(node.coord.toVec2()) orelse continue;
+        const hasVisited = this.nodes[index] != std.math.maxInt(world.NodeID);
+
+        w4.tracef("[fill] %d, %d, %d", tile, index, hasVisited);
+        if (hasVisited) continue;
+
+        this.nodes[index] = node.node_id;
+
         count += 1;
-        if (get_logic(tile)) |logic| {
-            // TODO: implement other logic (though I'm pretty sure that requires a graph...)
-            if (logic != .And) continue;
-            if (this.levels[index] < 2) continue;
-            try q.insert(cell + util.Dir.up);
+
+        if (get_logic(tile)) |_| {
+            // w4.tracef("[fill] logic");
+            const new_id = db.getLevelNodeID(level, node.coord) orelse {
+                w4.tracef("[fill] missing logic");
+                continue;
+            };
+            try q.insert(.{ .node_id = new_id, .coord = node.coord.add(.{ 0, -1 }) });
+            continue;
         }
         for (get_outputs(tile)) |conductor, i| {
+            // w4.tracef("[fill] outputs");
             if (!conductor) continue;
+            // w4.tracef("[fill] conductor");
             const s = @intToEnum(Side, i);
             const delta = s.dir();
             // TODO: check that cell can recieve from this side
-            const nextCell = cell + delta;
-            if (nextCell[0] < 0 or nextCell[1] < 0 or
-                nextCell[0] >= this.map_size[0] or
-                nextCell[1] >= this.map_size[1])
-                continue;
-            const nextTile = this.get_cell(nextCell) orelse here: {
-                for (this.doors.items) |*d| {
-                    if (@reduce(.And, d.cell == nextCell)) {
-                        d.enabled = true;
-                    }
-                }
-                break :here 0;
-            };
-            if (get_inputs(nextTile)[@enumToInt(s.opposite())])
-                try q.insert(nextCell);
+            const nextCoord = node.coord.addC(world.Coordinate.fromVec2(delta));
+            const tl = world.Coordinate.init(.{ 0, 0 });
+            const br = world.Coordinate.fromVec2(this.map_size);
+            // w4.tracef("[fill] next (%d, %d)", nextCoord.val[0], nextCoord.val[1]);
+            // w4.tracef("[fill] range (%d, %d)-(%d, %d)", tl.val[0], tl.val[1], br.val[0], br.val[1]);
+            if (!nextCoord.within(tl, br)) continue;
+            // w4.tracef("[fill] within %d", nextCoord.within(tl, br));
+            const nextTile = this.getCoord(nextCoord) orelse 0;
+            // w4.tracef("[fill] nextTile");
+            if (get_inputs(nextTile)[@enumToInt(s.opposite())]) {
+                // w4.tracef("[fill] get_inputs");
+                try q.insert(.{
+                    .node_id = node.node_id,
+                    .coord = nextCoord,
+                });
+            }
         }
         if (T.is_plug(tile)) {
+            // w4.tracef("[fill] plug");
             for (this.bridges.items) |*b| {
-                if (@reduce(.And, b.cells[0] == cell)) {
-                    try q.insert(b.cells[1]);
+                if (b.coords[0].eq(node.coord)) {
+                    try q.insert(.{
+                        .coord = b.coords[1],
+                        .node_id = node.node_id,
+                    });
                     b.enabled = true;
-                } else if (@reduce(.And, b.cells[1] == cell)) {
-                    try q.insert(b.cells[0]);
+                } else if (b.coords[1].eq(node.coord)) {
+                    try q.insert(.{
+                        .coord = b.coords[0],
+                        .node_id = node.node_id,
+                    });
                     b.enabled = true;
                 }
             }
         }
+        w4.tracef("[fill] end search step");
     }
     return count;
 }
@@ -369,16 +395,18 @@ const tilemap_width = 16;
 const tilemap_height = 16;
 const tilemap_stride = 128;
 
-pub fn draw(this: @This(), offset: Vec2) void {
+pub fn draw(this: @This(), db: world.Database, offset: Vec2) void {
     var y: usize = 0;
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
             const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) };
             const pos = cell * tile_size;
-            const tile = this.get_cell(cell + offset) orelse continue;
+            const coord = world.Coordinate.fromVec2(cell + offset);
+            const tile = this.getCoord(coord) orelse continue;
             if (tile == 0) continue;
-            if (this.isEnabled(cell + offset)) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
+            const energized = if (this.getNodeID(coord)) |node| db.circuit_info[node].energized else false;
+            if (energized) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
             const t = Vec2{
                 @intCast(i32, (tile % tilemap_width) * tile_size[0]),
                 @intCast(i32, (tile / tilemap_width) * tile_size[0]),

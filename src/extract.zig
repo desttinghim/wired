@@ -18,6 +18,7 @@ pub const Options = struct {
     plug: world.AutoTileset,
     switch_on: world.AutoTileset,
     switch_off: world.AutoTileset,
+    db: world.Database,
 };
 
 fn is_solid(tile: u7) bool {
@@ -32,6 +33,7 @@ pub fn extractLevel(opt: Options) !void {
     const alloc = opt.alloc;
     const level = opt.level;
     const tileset = opt.tileset;
+    const db = opt.db;
 
     const tiles = level.tiles orelse return error.NullTiles;
 
@@ -138,7 +140,18 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
-            if (circuit_map[i] == .Source) circuit.addSource(.{@intCast(i32, x), @intCast(i32, y)});
+            if (circuit_map[i] == .Source) {
+                const levelc = world.Coordinate.fromVec2(.{ @intCast(i32, x), @intCast(i32, y) });
+                const coord = world.Coordinate.fromWorld(level.world_x, level.world_y).addC(levelc);
+                w4.tracef("[extract] source (%d, %d)", coord.val[0], coord.val[1]);
+                if (db.getNodeID(coord)) |node_id| {
+                    circuit.addSource(.{
+                        .coord = levelc,
+                        .node_id = node_id,
+                    });
+                    w4.tracef("[extract] node id (%d)", node_id);
+                }
+            }
 
             if (circuit_map[i] == .None) {
                 autotiles[i] = null;

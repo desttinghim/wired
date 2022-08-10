@@ -47,9 +47,9 @@ pub const Tiles = struct {
         return tile >= 16 and tile < 20;
     }
 
-    pub const LogicAnd = 21;
-    pub const LogicNot = 22;
-    pub const LogicXor = 23;
+    pub const LogicAnd = 20;
+    pub const LogicNot = 21;
+    pub const LogicXor = 22;
 
     pub fn is_logic(tile: u8) bool {
         return tile >= 21 and tile <= 24;
@@ -753,12 +753,17 @@ pub const Database = struct {
 
     // Circuit functions
 
-    fn getNodeID(db: *Database, coord: Coord) ?NodeID {
+    pub fn getNodeID(db: Database, coord: Coord) ?NodeID {
         for (db.circuit_info) |node, i| {
             if (!coord.eq(node.coord)) continue;
             return @intCast(NodeID, i);
         }
         return null;
+    }
+
+    pub fn getLevelNodeID(db: Database, level: Level, coord: Coord) ?NodeID {
+        const levelc = Coord.fromWorld(level.world_x, level.world_y);
+        return db.getNodeID(coord.addC(levelc));
     }
 
     pub fn connectPlugs(db: *Database, p1: Coord, p2: Coord) !void {

@@ -480,17 +480,18 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // Add switch outlets
                         if (input_dir != .West and west) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
+                            const new_coord = coord.add(.{1, 0});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
                                     .which = 0,
                                 } },
-                                .coord = coord,
+                                .coord = new_coord,
                             });
                             const right = try alloc.create(Node);
                             right.* = Node{ .data = .{
                                 .last_node = out_node,
-                                .coord = coord.add(.{ 1, 0 }),
+                                .coord = new_coord,
                                 .last_coord = coord,
                             } };
                             bfs_queue.append(right);
@@ -498,17 +499,18 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .East and east) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
+                            const new_coord = coord.add(.{-1, 0});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
                                     .which = 0,
                                 } },
-                                .coord = coord,
+                                .coord = new_coord,
                             });
                             const left = try alloc.create(Node);
                             left.* = Node{ .data = .{
                                 .last_node = out_node,
-                                .coord = coord.add(.{ -1, 0 }),
+                                .coord = new_coord,
                                 .last_coord = coord,
                             } };
                             bfs_queue.append(left);
@@ -516,17 +518,18 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .South and south) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
+                            const new_coord = coord.add(.{0, 1});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
                                     .which = 1,
                                 } },
-                                .coord = coord,
+                                .coord = new_coord,
                             });
                             const down = try alloc.create(Node);
                             down.* = Node{ .data = .{
                                 .last_node = out_node,
-                                .coord = coord.add(.{ 0, 1 }),
+                                .coord = new_coord,
                                 .last_coord = coord,
                             } };
                             bfs_queue.append(down);
@@ -534,17 +537,18 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .North and north) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
+                            const new_coord = coord.add(.{0, -1});
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
                                     .which = 1,
                                 } },
-                                .coord = coord,
+                                .coord = new_coord,
                             });
                             const up = try alloc.create(Node);
                             up.* = Node{ .data = .{
                                 .last_node = out_node,
-                                .coord = coord.add(.{ 0, -1 }),
+                                .coord = new_coord,
                                 .last_coord = coord,
                             } };
                             bfs_queue.append(up);
@@ -692,22 +696,6 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 bfs_queue.append(down);
                 bfs_queue.append(up);
             }
-        }
-    }
-
-    var i: usize = 0;
-    while (i < nodes.items.len) : (i += 1) {
-        switch (nodes.items[i].kind) {
-            // .Source => {
-            // },
-            .And => {},
-            .Xor => {},
-            .Conduit => {},
-            .Plug => {},
-            .Switch => {},
-            .Join => {},
-            .Outlet => {},
-            else => {},
         }
     }
 

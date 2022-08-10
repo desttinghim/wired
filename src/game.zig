@@ -178,7 +178,7 @@ var ScoreCoin = Sprite{
 
 var map_buf: [400]u8 = undefined;
 
-var circuit_lvl_buf: [400]u8 = undefined;
+var circuit_node_buf: [400]u8 = undefined;
 var circuit_buf: [400]u8 = undefined;
 
 var circuit_options: Circuit.Options = undefined;
@@ -209,6 +209,8 @@ fn loadLevel(lvl: usize) !void {
     level = try db.levelLoad(alloc, lvl);
     const levelc = world.Coordinate.fromWorld(level.world_x, level.world_y);
 
+    w4.tracef("Loading level [%d] (%d, %d)", lvl, level.world_x, level.world_y);
+
     try extract.extractLevel(.{
         .alloc = frame_alloc,
         .level = level,
@@ -219,6 +221,7 @@ fn loadLevel(lvl: usize) !void {
         .plug = world.Tiles.Plugs,
         .switch_off = world.Tiles.SwitchesOff,
         .switch_on = world.Tiles.SwitchesOn,
+        .db = db,
     });
 
     const tile_size = Vec2{ 8, 8 };
@@ -258,7 +261,7 @@ fn loadLevel(lvl: usize) !void {
         var i: usize = 0;
         while (db.getDoor(level, i)) |door| : (i += 1) {
             const coord = door.coord.subC(levelc);
-            try circuit.addDoor(coord.toVec2());
+            try circuit.addDoor(coord);
         }
     }
 
@@ -269,7 +272,8 @@ fn loadLevel(lvl: usize) !void {
             var e = false;
             if (db.isEnergized(globalc)) {
                 e = true;
-                circuit.addSource(.{ join.val[0], join.val[1] });
+                const node_id = db.getNodeID(globalc) orelse continue;
+                circuit.addSource(.{ .coord = join, .node_id = node_id });
             }
             w4.tracef("---- Join %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @boolToInt(e));
         }
@@ -282,7 +286,7 @@ fn loadLevel(lvl: usize) !void {
             var e = false;
             if (db.getSwitchState(globalc)) |state| {
                 e = true;
-                if (state != 0) circuit.switchOn(.{ _switch.val[0], _switch.val[1] });
+                if (state != 0) circuit.switchOn(levelc);
             }
             w4.tracef("---- Switch %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @boolToInt(e));
         }
@@ -378,10 +382,10 @@ pub fn start() !void {
 
     circuit_options = .{
         .map = &circuit_buf,
-        .levels = &circuit_lvl_buf,
+        .nodes = &circuit_node_buf,
         .map_size = level_size,
         .bridges = try alloc.alloc(Circuit.BridgeState, 5),
-        .sources = try alloc.alloc(util.Cell, 5),
+        .sources = try alloc.alloc(Circuit.Source, 5),
         .doors = try alloc.alloc(Circuit.DoorState, 10),
     };
     circuit = Circuit.init(circuit_options);
@@ -481,7 +485,7 @@ pub fn update(time: usize) !State {
     camera = newCamera;
 
     map.draw(camera);
-    circuit.draw(camera);
+    circuit.draw(db, camera);
 
     for (wires.slice()) |*wire| {
         wireDrawProcess(1, wire);
@@ -503,12 +507,13 @@ pub fn update(time: usize) !State {
     }
 
     {
-        const pos = util.world2cell(player.pos.pos);
-        const shouldHum = circuit.isEnabled(pos) or
-            circuit.isEnabled(pos + util.Dir.up) or
-            circuit.isEnabled(pos + util.Dir.down) or
-            circuit.isEnabled(pos + util.Dir.left) or
-            circuit.isEnabled(pos + util.Dir.right);
+        // const pos = util.world2cell(player.pos.pos);
+        const shouldHum = false;
+        // circuit.isEnabled(pos) or
+        //     circuit.isEnabled(pos + util.Dir.up) or
+        //     circuit.isEnabled(pos + util.Dir.down) or
+        //     circuit.isEnabled(pos + util.Dir.left) or
+        //     circuit.isEnabled(pos + util.Dir.right);
         if (shouldHum) {
             w4.tone(.{ .start = 60 }, .{ .release = 255, .sustain = 0 }, 1, .{ .channel = .pulse1, .mode = .p50 });
         }
@@ -588,7 +593,8 @@ const Interaction = struct {
 
 fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
     const cell = util.world2cell(pos);
-    if (circuit.get_cell(cell)) |tile| {
+    const coord = Coord.fromVec2(cell);
+    if (circuit.getCoord(coord)) |tile| {
         if (world.Tiles.is_switch(tile)) {
             return Interaction{ .details = .lever, .pos = cell * Map.tile_size + Vec2{ 4, 4 } };
         }
@@ -598,9 +604,10 @@ fn getNearestCircuitInteraction(pos: Vec2f) ?Interaction {
 
 fn getNearestPlugInteraction(pos: Vec2f, wireID: usize, which: usize) ?Interaction {
     const cell = util.world2cell(pos);
-    if (circuit.get_cell(cell)) |tile| {
+    const coord = world.Coordinate.fromVec2(cell);
+    if (circuit.getCoord(coord)) |tile| {
         if (world.Tiles.is_plug(tile)) {
-            const active = circuit.isEnabled(cell);
+            const active = db.isEnergized(coord);
             return Interaction{
                 .details = .{ .plug = .{ .wireID = wireID, .which = which } },
                 .pos = cell * Map.tile_size + Vec2{ 4, 4 },
@@ -706,17 +713,16 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
                 },
                 .lever => {
                     const cell = @divTrunc(i.pos, Map.tile_size);
-                    const new_switch = circuit.toggle(cell);
+                    const coord = Coord.fromVec2(cell);
+                    const new_switch = circuit.toggle(coord);
                     if (new_switch) |tile| {
                         const T = world.Tiles;
                         const new_state: u8 = switch (tile) {
                             T.SwitchTeeWestOn, T.SwitchTeeEastOn, T.SwitchVerticalOn => 1,
                             else => 0,
                         };
-                        const x = level.world_x * 20 + @intCast(i16, cell[0]);
-                        const y = level.world_y * 20 + @intCast(i16, cell[1]);
 
-                        db.setSwitch(Coord.init(.{ x, y }), new_state);
+                        db.setSwitch(coord.addC(Coord.fromWorld(level.world_x, level.world_y)), new_state);
                     }
                     try updateCircuit();
                 },
@@ -731,37 +737,35 @@ fn updateCircuit() !void {
         wire.enabled = false;
         if (!wire.begin().pinned or !wire.end().pinned) continue;
         const nodes = wire.nodes.constSlice();
-        const cellBegin = util.world2cell(nodes[0].pos);
-        const cellEnd = util.world2cell(nodes[nodes.len - 1].pos);
+        const cellBegin = Coord.fromVec2(util.world2cell(nodes[0].pos));
+        const cellEnd = Coord.fromVec2(util.world2cell(nodes[nodes.len - 1].pos));
 
         circuit.bridge(.{ cellBegin, cellEnd }, wireID);
 
         const topleft = Coord.fromWorld(level.world_x, level.world_y);
-        const p1 = Coord.init(.{
-            @intCast(i16, cellBegin[0]),
-            @intCast(i16, cellBegin[1]),
-        }).addC(topleft);
-        const p2 = Coord.init(.{
-            @intCast(i16, cellEnd[0]),
-            @intCast(i16, cellEnd[1]),
-        }).addC(topleft);
+        const globalBegin = cellBegin.addC(topleft);
+        const globalEnd = cellEnd.addC(topleft);
 
-        db.connectPlugs(p1, p2) catch {
+        db.connectPlugs(globalBegin, globalEnd) catch {
             w4.tracef("connect plugs error");
         };
     }
 
+    try db.updateCircuit(frame_alloc);
+
     // Simulate circuit
-    _ = try circuit.fill(frame_alloc);
+    _ = try circuit.fill(frame_alloc, db, level);
+    w4.tracef("[updateCircuit] circuit filled");
+    // for (circuit.nodes) |node, i| {
+    //     w4.tracef("%d: %d", i, node);
+    // }
 
     // Energize wires
-    for (wires.slice()) |*wire| {
-        const begin = wire.begin();
-        const end = wire.end();
-        const cellBegin = util.world2cell(begin.pos);
-        const cellEnd = util.world2cell(end.pos);
-        if ((circuit.isEnabled(cellBegin) and begin.pinned) or
-            (circuit.isEnabled(cellEnd) and end.pinned)) wire.enabled = true;
+    {
+        var i: usize = 0;
+        while (circuit.enabledBridge(i)) |wireID| : (i += 1) {
+            wires.slice()[wireID].enabled = true;
+        }
     }
 
     // Add doors to map
@@ -770,19 +774,14 @@ fn updateCircuit() !void {
         const tile: u8 = if (door.kind == .Door) world.Tiles.Door else world.Tiles.Trapdoor;
         const globalc = world.Coordinate.fromWorld(level.world_x, level.world_y);
         const coord = door.coord.subC(globalc);
-        w4.tracef("[getDoor] (%d, %d)", coord.val[0], coord.val[1]);
-        try map.set_cell(coord.toVec2(), tile);
+        if (db.isEnergized(door.coord)) {
+            w4.tracef("[door] open (%d, %d)", door.coord.val[0], door.coord.val[1]);
+            try map.set_cell(coord.toVec2(), world.Tiles.Empty);
+        } else {
+            w4.tracef("[door] closed (%d, %d)", door.coord.val[0], door.coord.val[1]);
+            try map.set_cell(coord.toVec2(), tile);
+        }
     }
-
-    // Remove doors that have been unlocked
-    const enabledDoors = try circuit.enabledDoors(frame_alloc);
-    defer frame_alloc.free(enabledDoors.items);
-    for (enabledDoors.items) |door| {
-        w4.tracef("[enabledDoors] (%d, %d)", door[0], door[1]);
-        try map.set_cell(door, world.Tiles.Empty);
-    }
-
-    try db.updateCircuit(frame_alloc);
 
     for (db.circuit_info) |node, n| {
         const e = @boolToInt(node.energized);
@@ -790,7 +789,7 @@ fn updateCircuit() !void {
             .Conduit => |Conduit| w4.tracef("[%d]: Conduit [%d, %d] <%d>", n, Conduit[0], Conduit[1], e),
             .And => |And| w4.tracef("[%d]: And [%d, %d] <%d>", n, And[0], And[1], e),
             .Xor => |Xor| w4.tracef("[%d]: Xor [%d, %d] <%d>", n, Xor[0], Xor[1], e),
-            .Source => w4.tracef("[%d]: Source", n),
+            .Source => w4.tracef("[%d]: Source (%d, %d)", n, node.coord.val[0], node.coord.val[1]),
             .Socket => |Socket| {
                 const socket = Socket orelse std.math.maxInt(world.NodeID);
                 w4.tracef("[%d]: Socket [%d] <%d>", n, socket, e);
