@@ -46,7 +46,7 @@ pub fn extractLevel(opt: Options) !void {
     circuit.map_size = .{ level.width, height };
 
     w4.tracef("%d", @src().line);
-    var auto_map = try alloc.alloc(bool, size);
+    var auto_map = try alloc.alloc(world.SolidType, size);
     defer alloc.free(auto_map);
 
     var circuit_map = try alloc.alloc(CircuitType, size);
@@ -56,7 +56,7 @@ pub fn extractLevel(opt: Options) !void {
     for (tiles) |data, i| {
         switch (data) {
             .tile => |tile| {
-                auto_map[i] = false;
+                auto_map[i] = .Empty;
                 map.tiles[i] = tile;
                 circuit_map[i] = .None;
             },
@@ -79,7 +79,7 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
-            if (!auto_map[i]) {
+            if (auto_map[i] == .Empty) {
                 autotiles[i] = null;
                 continue;
             }
@@ -93,25 +93,25 @@ pub fn extractLevel(opt: Options) !void {
             // Check horizontal neighbors
             if (x == 0) {
                 west = out_of_bounds;
-                east = auto_map[i + 1];
+                east = auto_map[i + 1] == .Solid;
             } else if (x == width - 1) {
-                west = auto_map[i - 1];
+                west = auto_map[i - 1] == .Solid;
                 east = out_of_bounds;
             } else {
-                west = auto_map[i - 1];
-                east = auto_map[i + 1];
+                west = auto_map[i - 1] == .Solid;
+                east = auto_map[i + 1] == .Solid;
             }
 
             // Check vertical neighbours
             if (y == 0) {
                 north = out_of_bounds;
-                south = auto_map[i + stride];
+                south = auto_map[i + stride] == .Solid;
             } else if (y == height - 1) {
-                north = auto_map[i - stride];
+                north = auto_map[i - stride] == .Solid;
                 south = out_of_bounds;
             } else {
-                north = auto_map[i - stride];
-                south = auto_map[i + stride];
+                north = auto_map[i - stride] == .Solid;
+                south = auto_map[i + stride] == .Solid;
             }
 
             autotiles[i] = AutoTile{
@@ -203,12 +203,18 @@ pub fn extractLevel(opt: Options) !void {
     for (autotiles) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
             const tile = switch (circuit_map[i]) {
-                .Conduit, .Source, .Join => opt.conduit.find(autotile),
+                .Conduit,
+                .Conduit_Vertical,
+                .Conduit_Horizontal,
+                .Source,
+                .Join,
+                => opt.conduit.find(autotile),
                 .Switch_On => opt.switch_on.find(autotile),
                 .Switch_Off => opt.switch_off.find(autotile),
                 .Plug, .Socket => opt.plug.find(autotile),
                 .And => world.Tiles.LogicAnd,
                 .Xor => world.Tiles.LogicXor,
+                .Diode => world.Tiles.LogicDiode,
                 .None, .Outlet => 0,
             };
             circuit.map[i] = tile;

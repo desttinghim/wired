@@ -152,8 +152,8 @@ fn parseLevel(opt: struct {
 
     const layers = level.layerInstances orelse return error.NoLayers;
 
-    const world_x: i8 = @intCast(i8, @divExact(level.worldX, (ldtk.worldGridWidth orelse 160)));
-    const world_y: i8 = @intCast(i8, @divExact(level.worldY, (ldtk.worldGridHeight orelse 160)));
+    const world_x: i8 = @intCast(i8, @divFloor(level.worldX, (ldtk.worldGridWidth orelse 160)));
+    const world_y: i8 = @intCast(i8, @divFloor(level.worldY, (ldtk.worldGridHeight orelse 160)));
 
     var circuit_layer: ?LDtk.LayerInstance = null;
     var collision_layer: ?LDtk.LayerInstance = null;
@@ -285,14 +285,22 @@ fn parseLevel(opt: struct {
 
     // Add circuit tiles
     for (circuit.intGridCsv) |cir64, i| {
-        const cir = @intCast(u4, cir64);
+        const cir = @intToEnum(world.CircuitType, @intCast(u5, cir64));
         const col = collision.intGridCsv[i];
-        if (col == 0 or col == 1) {
-            tiles[i] = world.TileData{ .flags = .{
-                .solid = col == 1,
-                .circuit = @intToEnum(world.CircuitType, cir),
-            } };
-        }
+        if (cir != .None and col == 2) return error.DebrisAndCircuitOverlapped;
+        if (cir == .None) continue;
+        const solid: world.SolidType = switch (col) {
+            0 => .Empty,
+            1 => .Solid,
+            3 => .Oneway,
+            else => return error.DebrisAndCircuitOverlapped,
+        };
+        if (cir == .Socket)
+            std.log.warn("[parseLevel] {}: {}", .{ i, cir });
+        tiles[i] = world.TileData{ .flags = .{
+            .solid = solid,
+            .circuit = cir,
+        } };
     }
 
     return parsed_level;
@@ -313,22 +321,15 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
     var sources = Queue{};
     var sockets = Queue{};
 
-    var level_hashmap = std.AutoHashMap(u16, world.Level).init(alloc);
-    defer level_hashmap.deinit();
-
     for (levels) |level| {
-        const id: u16 = @bitCast(u8, level.world_x) | @intCast(u16, @bitCast(u8, level.world_y)) << 8;
-        // So we can quickly find levels
-        try level_hashmap.put(id, level);
-
         // Use a global coordinate system for our algorithm
         const global_x = @intCast(i16, level.world_x) * 20;
         const global_y = @intCast(i16, level.world_y) * 20;
         for (level.tiles orelse continue) |tileData, i| {
             const x = global_x + @intCast(i16, @mod(i, level.width));
             const y = global_y + @intCast(i16, @divTrunc(i, level.width));
-            const coordinate = try alloc.create(Node);
-            coordinate.* = .{ .data = .{
+            const search_item = try alloc.create(Node);
+            search_item.* = .{ .data = .{
                 .last_node = @intCast(world.NodeID, nodes.items.len),
                 .coord = Coord.init(.{ x, y }),
             } };
@@ -340,12 +341,11 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     switch (flags.circuit) {
                         .Source => {
                             try nodes.append(.{ .kind = .Source, .coord = Coord.init(.{ x, y }) });
-                            sources.append(coordinate);
+                            sources.append(search_item);
                         },
                         .Socket => {
-                            // try nodes.append(.{ .kind = .{ .Plug = null } });
-                            coordinate.data.last_node = std.math.maxInt(world.NodeID);
-                            sockets.append(coordinate);
+                            search_item.data.last_node = std.math.maxInt(world.NodeID);
+                            sockets.append(search_item);
                         },
                         else => {
                             // Do nothing
@@ -367,24 +367,22 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
     while (run < 2) : (run += 1) {
         if (run == 0) bfs_queue.concatByMoving(&sources);
         if (run == 1) bfs_queue.concatByMoving(&sockets);
-        // bfs_queue.concatByMoving(&outlets);
 
         while (bfs_queue.popFirst()) |node| {
             // Make sure we clean up the node's memory
             defer alloc.destroy(node);
             const coord = node.data.coord;
             if (visited.contains(coord)) continue;
-            try visited.put(coord, .{});
-            // TODO remove magic numbers
+            try visited.put(coord, {});
+
             const worldc = coord.toWorld();
-            const id: u16 = @bitCast(u8, worldc[0]) | @intCast(u16, @bitCast(u8, worldc[1])) << 8;
-            // const level_opt: ?world.Level = level_hashmap.get(.{ world_x, world_y });
-            if (level_hashmap.getPtr(id) != null) {
-                const level = level_hashmap.getPtr(id);
+            // const level = getLevel(levels, worldc[0], worldc[1]);
+            if (getLevel(levels, worldc[0], worldc[1])) |level| {
                 const last_node = node.data.last_node;
                 var next_node = last_node;
 
-                const tile = level.?.getTile(coord).?;
+                const tile = level.getTile(coord) orelse continue;
+                std.log.warn("[buildCircuit] {} [{}] {}", .{ coord, node.data.last_node, tile });
 
                 if (tile != .flags) continue;
                 const flags = tile.flags;
@@ -396,6 +394,56 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // we find out we have to outputs, we can add the conduit and possible rewrite
                         // previous nodes to point to the conduit
                         // TODO
+                    },
+                    .Conduit_Horizontal => {
+                        // Skip vertical inputs
+                        const last_coord = node.data.last_coord.?;
+                        const input_dir: Dir = getInputDirection(coord, last_coord);
+                        if (input_dir == .North or input_dir == .South) {
+                            _ = visited.remove(coord);
+                            continue;
+                        }
+                        const left = try alloc.create(Node);
+                        left.* = Node{ .data = .{
+                            .last_node = last_node,
+                            .coord = coord.add(.{ -1, 0 }),
+                            .last_coord = coord,
+                        } };
+                        bfs_queue.append(left);
+
+                        const right = try alloc.create(Node);
+                        right.* = Node{ .data = .{
+                            .last_node = last_node,
+                            .coord = coord.add(.{ 1, 0 }),
+                            .last_coord = coord,
+                        } };
+                        bfs_queue.append(right);
+                        continue;
+                    },
+                    .Conduit_Vertical => {
+                        // Skip horizontal inputs
+                        const last_coord = node.data.last_coord.?;
+                        const input_dir: Dir = getInputDirection(coord, last_coord);
+                        if (input_dir == .West or input_dir == .East) {
+                            _ = visited.remove(coord);
+                            continue;
+                        }
+                        const up = try alloc.create(Node);
+                        up.* = Node{ .data = .{
+                            .last_node = last_node,
+                            .coord = coord.add(.{ 0, -1 }),
+                            .last_coord = coord,
+                        } };
+                        bfs_queue.append(up);
+
+                        const down = try alloc.create(Node);
+                        down.* = Node{ .data = .{
+                            .last_node = last_node,
+                            .coord = coord.add(.{ 0, 1 }),
+                            .last_coord = coord,
+                        } };
+                        bfs_queue.append(down);
+                        continue;
                     },
                     .Socket => {
                         next_node = @intCast(world.NodeID, nodes.items.len);
@@ -423,28 +471,39 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     .Switch_Off, .Switch_On => {
                         // Identify input side
                         const last_coord = node.data.last_coord.?;
-                        const Dir = enum { North, West, East, South };
-                        const input_dir: Dir = dir: {
-                            if (last_coord.eq(coord.add(.{ 0, -1 }))) {
-                                break :dir .North;
-                            } else if (last_coord.eq(coord.add(.{ -1, 0 }))) {
-                                break :dir .West;
-                            } else if (last_coord.eq(coord.add(.{ 1, 0 }))) {
-                                break :dir .East;
-                            } else {
-                                break :dir .South;
-                            }
-                        };
+                        const input_dir: Dir = getInputDirection(coord, last_coord);
                         // Find outlets
-                        const north_opt = level.?.getTile(coord.add(.{ 0, -1 })).?.getCircuit();
-                        const west_opt = level.?.getTile(coord.add(.{ -1, 0 })).?.getCircuit();
-                        const east_opt = level.?.getTile(coord.add(.{ 1, 0 })).?.getCircuit();
-                        const south_opt = level.?.getTile(coord.add(.{ 0, 1 })).?.getCircuit();
+                        const ncoord = coord.add(.{ 0, -1 });
+                        const wcoord = coord.add(.{ -1, 0 });
+                        const ecoord = coord.add(.{ 1, 0 });
+                        const scoord = coord.add(.{ 0, 1 });
 
-                        const north = (north_opt orelse world.CircuitType.None) != .None;
-                        const west = (west_opt orelse world.CircuitType.None) != .None;
-                        const east = (east_opt orelse world.CircuitType.None) != .None;
-                        const south = (south_opt orelse world.CircuitType.None) != .None;
+                        const north_opt = if (level.getTile(ncoord)) |t| t.getCircuit() else @panic("AAAAA");
+                        const west_opt = if (level.getTile(wcoord)) |t| t.getCircuit() else @panic("AAAAA");
+                        const east_opt = if (level.getTile(ecoord)) |t| t.getCircuit() else @panic("AAAAA");
+                        const south_opt = if (level.getTile(scoord)) |t| t.getCircuit() else @panic("AAAAA");
+
+                        const north_tile = north_opt orelse world.CircuitType.None;
+                        const west_tile = west_opt orelse world.CircuitType.None;
+                        const east_tile = east_opt orelse world.CircuitType.None;
+                        const south_tile = south_opt orelse world.CircuitType.None;
+
+                        const north = north_tile != .None and north_tile != .Conduit_Horizontal;
+                        const west = west_tile != .None and west_tile != .Conduit_Vertical;
+                        const east = east_tile != .None and east_tile != .Conduit_Vertical;
+                        const south = south_tile != .None and south_tile != .Conduit_Horizontal;
+
+                        std.log.warn("[buildCircuit] {}: {} {},\n\t{} {},\n\t{} {},\n\t{} {}", .{
+                            coord,
+                            north_tile,
+                            ncoord,
+                            west_tile,
+                            wcoord,
+                            east_tile,
+                            ecoord,
+                            south_tile,
+                            scoord,
+                        });
 
                         // We don't have four way switches, don't allow them
                         std.debug.assert(west != true or east != true);
@@ -480,7 +539,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         // Add switch outlets
                         if (input_dir != .West and west) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{-1, 0});
+                            const new_coord = coord.add(.{ -1, 0 });
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -499,7 +558,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .East and east) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{1, 0});
+                            const new_coord = coord.add(.{ 1, 0 });
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -518,7 +577,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .South and south) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{0, 1});
+                            const new_coord = coord.add(.{ 0, 1 });
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -537,7 +596,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
                         if (input_dir != .North and north) {
                             const out_node = @intCast(world.NodeID, nodes.items.len);
-                            const new_coord = coord.add(.{0, -1});
+                            const new_coord = coord.add(.{ 0, -1 });
                             try nodes.append(.{
                                 .kind = .{ .SwitchOutlet = .{
                                     .source = next_node,
@@ -596,10 +655,34 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             }
                         } else {
                             _ = visited.remove(coord);
-                            if (side == .O) {
+                            if (side != .O) {
                                 // TODO: reverse the path, since the search path
                                 // may have come from a plug
-                                return error.OutputToSource;
+                                next_node = @intCast(world.NodeID, nodes.items.len);
+                                try nodes.append(.{
+                                    .kind = .{ .And = .{ last_node, std.math.maxInt(world.NodeID) } },
+                                    .coord = coord,
+                                });
+                                std.log.warn("{}", .{nodes.items[last_node]});
+                                switch (nodes.items[last_node].kind) {
+                                    .And => |_and| {
+                                        if (_and[0] == std.math.maxInt(world.NodeID)) {
+                                            nodes.items[last_node].kind.And[0] = next_node;
+                                        } else if (_and[1] == std.math.maxInt(world.NodeID)) {
+                                            nodes.items[last_node].kind.And[1] = next_node;
+                                        } else {
+                                            return error.AndGateFilled;
+                                        }
+                                    },
+                                    .SwitchOutlet => |_switch| {
+                                        _ = _switch;
+                                        std.log.warn("{}", .{nodes.items[last_node].coord});
+                                    },
+                                    .Socket => |socket| {
+                                        _ = socket;
+                                    },
+                                    else => return error.Unimplemented,
+                                }
                             } else if (side == .L) {
                                 next_node = @intCast(world.NodeID, nodes.items.len);
                                 try nodes.append(.{
@@ -625,7 +708,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         }
                     },
                     .Xor => {
-                        std.log.warn("XOR XOR XOR",.{});
+                        std.log.warn("XOR XOR XOR", .{});
                         // TODO: verify Xor gate is properly connected
                         const last_coord = node.data.last_coord.?;
                         const Side = enum { O, L, R };
@@ -679,6 +762,9 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             continue;
                         }
                     },
+                    .Diode => {
+                        // TODO
+                    },
                     .None => continue,
                 }
 
@@ -712,10 +798,30 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 bfs_queue.append(left);
                 bfs_queue.append(down);
                 bfs_queue.append(up);
-
             }
         }
     }
 
     return nodes;
+}
+
+const Dir = enum { North, West, East, South };
+
+fn getInputDirection(coord: world.Coordinate, last_coord: world.Coordinate) Dir {
+    if (last_coord.eq(coord.add(.{ 0, -1 }))) {
+        return .North;
+    } else if (last_coord.eq(coord.add(.{ -1, 0 }))) {
+        return .West;
+    } else if (last_coord.eq(coord.add(.{ 1, 0 }))) {
+        return .East;
+    } else {
+        return .South;
+    }
+}
+
+fn getLevel(levels: []world.Level, x: i8, y: i8) ?world.Level {
+    for (levels) |level| {
+        if (level.world_x == x and level.world_y == y) return level;
+    }
+    return null;
 }

@@ -2,22 +2,6 @@
 
 const std = @import("std");
 
-/// The CircuitType of a tile modifies how the tile responds to
-/// electricity
-pub const CircuitType = enum(u4) {
-    None = 0,
-    Conduit = 1,
-    Plug = 2,
-    Switch_Off = 3,
-    Switch_On = 4,
-    Join = 5,
-    And = 6,
-    Xor = 7,
-    Outlet = 8,
-    Source = 9,
-    Socket = 10,
-};
-
 /// This lists the most important tiles so I don't have to keep rewriting things
 pub const Tiles = struct {
     // Switches
@@ -50,9 +34,10 @@ pub const Tiles = struct {
     pub const LogicAnd = 20;
     pub const LogicNot = 21;
     pub const LogicXor = 22;
+    pub const LogicDiode = 23;
 
     pub fn is_logic(tile: u8) bool {
-        return tile >= 21 and tile <= 24;
+        return tile >= LogicAnd and tile <= LogicDiode;
     }
 
     pub const ConduitCross = 96;
@@ -109,29 +94,52 @@ pub const Tiles = struct {
     }, 2);
 };
 
+pub const SolidType = enum(u2) {
+    Empty = 0,
+    Solid = 1,
+    Oneway = 2,
+};
+
+/// The CircuitType of a tile modifies how the tile responds to
+/// electricity
+pub const CircuitType = enum(u5) {
+    None = 0,
+    Conduit = 1,
+    Plug = 2,
+    Switch_Off = 3,
+    Switch_On = 4,
+    Join = 5,
+    And = 6,
+    Xor = 7,
+    Outlet = 8,
+    Source = 9,
+    Socket = 10,
+    Diode = 11,
+    Conduit_Vertical = 12,
+    Conduit_Horizontal = 13,
+};
+
 pub const TileData = union(enum) {
     tile: u7,
     flags: struct {
-        solid: bool,
+        solid: SolidType,
         circuit: CircuitType,
     },
 
     pub fn getCircuit(data: TileData) ?CircuitType {
-        switch (data) {
-            .tile => |_| return null,
-            .flags => |flags| {
-                if (flags.circuit == .None) return null;
-                return flags.circuit;
-            },
+        if (data == .flags) {
+            return data.flags.circuit;
         }
+        return null;
     }
 
     pub fn toByte(data: TileData) u8 {
         switch (data) {
             .tile => |int| return 0b1000_0000 | @intCast(u8, int),
             .flags => |flags| {
+                const solid = @enumToInt(flags.solid);
                 const circuit = @enumToInt(flags.circuit);
-                return (@intCast(u7, @boolToInt(flags.solid))) | (@intCast(u7, circuit) << 1);
+                return 0b0111_1111 & ((@intCast(u7, solid)) | (@intCast(u7, circuit) << 2));
             },
         }
     }
@@ -139,13 +147,13 @@ pub const TileData = union(enum) {
     pub fn fromByte(byte: u8) TileData {
         const is_tile = (0b1000_0000 & byte) > 0;
         if (is_tile) {
-            const tile = @intCast(u7, (0b0111_1111 & byte));
+            const tile = @intCast(u7, (0b0000_0011 & byte));
             return TileData{ .tile = tile };
         } else {
-            const is_solid = (0b0000_0001 & byte) > 0;
-            const circuit = @intCast(u4, (0b0001_1110 & byte) >> 1);
+            const solid = (0b0000_0011 & byte);
+            const circuit = @intCast(u5, (0b0111_1100 & byte) >> 2);
             return TileData{ .flags = .{
-                .solid = is_solid,
+                .solid = @intToEnum(SolidType, solid),
                 .circuit = @intToEnum(CircuitType, circuit),
             } };
         }
@@ -257,12 +265,12 @@ pub const Level = struct {
     size: u16,
     tiles: ?[]TileData,
 
-    pub fn init(x: u8, y: u8, width: u16, buf: []TileData) Level {
+    pub fn init(x: i8, y: i8, width: u16, buf: []TileData) Level {
         return Level{
             .world_x = x,
             .world_y = y,
             .width = width,
-            .size = buf.len,
+            .size = @intCast(u16, buf.len),
             .tiles = buf,
         };
     }
@@ -310,9 +318,11 @@ pub const Level = struct {
     pub fn getTile(level: Level, globalc: Coord) ?TileData {
         const tiles = level.tiles orelse return null;
         const worldc = globalc.toLevelTopLeft();
+        const se = worldc.add(.{ 20, 20 });
+        if (!globalc.within(worldc, se)) return null;
         const x = globalc.val[0] - worldc.val[0];
         const y = globalc.val[1] - worldc.val[1];
-        const w = @intCast(i16, level.width);
+        const w = @intCast(i32, level.width);
         const i = @intCast(usize, x + y * w);
         return tiles[i];
     }
@@ -817,25 +827,30 @@ pub const Database = struct {
         if (visited[i]) return db.circuit_info[i].energized;
         visited[i] = true;
         const node = db.circuit_info[i];
+        const w4 = @import("wasm4.zig");
         switch (node.kind) {
             .And => |And| {
+                w4.tracef("[updateCircuitFragment] %d And %d %d", i, And[0], And[1]);
                 const input1 = db.updateCircuitFragment(And[0], visited);
                 const input2 = db.updateCircuitFragment(And[1], visited);
                 db.circuit_info[i].energized = (input1 and input2);
             },
             .Xor => |Xor| {
+                w4.tracef("[updateCircuitFragment] %d Xor", i);
                 const input1 = db.updateCircuitFragment(Xor[0], visited);
                 const input2 = db.updateCircuitFragment(Xor[1], visited);
                 db.circuit_info[i].energized = (input1 and !input2) or (input2 and !input1);
             },
             .Source => db.circuit_info[i].energized = true,
             .Conduit => |Conduit| {
+                w4.tracef("[updateCircuitFragment] %d Conduit", i);
                 const input1 = db.updateCircuitFragment(Conduit[0], visited);
                 const input2 = db.updateCircuitFragment(Conduit[1], visited);
                 db.circuit_info[i].energized = (input1 or input2);
             },
             // TODO: Sockets may come before the plug they are connected to
             .Socket => |socket_opt| {
+                w4.tracef("[updateCircuitFragment] %d Socket", i);
                 if (socket_opt) |input| {
                     db.circuit_info[i].energized = db.updateCircuitFragment(input, visited);
                 } else {
@@ -843,12 +858,15 @@ pub const Database = struct {
                 }
             },
             .Plug => |Plug| {
+                w4.tracef("[updateCircuitFragment] %d Plug", i);
                 db.circuit_info[i].energized = db.updateCircuitFragment(Plug, visited);
             },
             .Switch => |_Switch| {
+                w4.tracef("[updateCircuitFragment] %d Switch %d", i, _Switch.source);
                 db.circuit_info[i].energized = db.updateCircuitFragment(_Switch.source, visited);
             },
             .SwitchOutlet => |_Switch| {
+                w4.tracef("[updateCircuitFragment] %d Switch Outlet", i);
                 const is_energized = db.updateCircuitFragment(_Switch.source, visited);
                 const _switch = db.circuit_info[_Switch.source].kind.Switch;
                 const _outlet = db.circuit_info[i].kind.SwitchOutlet;
@@ -858,12 +876,15 @@ pub const Database = struct {
                 db.circuit_info[i].energized = _outlet.which == _switch.state;
             },
             .Join => |Join| {
+                w4.tracef("[updateCircuitFragment] %d Join", i);
                 db.circuit_info[i].energized = db.updateCircuitFragment(Join, visited);
             },
             .Outlet => |Outlet| {
+                w4.tracef("[updateCircuitFragment] %d Outlet", i);
                 db.circuit_info[i].energized = db.updateCircuitFragment(Outlet, visited);
             },
         }
+                w4.tracef("[updateCircuitFragment] %d end", i);
         return db.circuit_info[i].energized;
     }
 
@@ -872,6 +893,8 @@ pub const Database = struct {
         defer alloc.free(visited);
         std.mem.set(bool, visited, false);
         var i: usize = db.circuit_info.len - 1;
+        const w4 = @import("wasm4.zig");
+        w4.tracef("[updateCircuit] circuit info len %d", db.circuit_info.len);
         while (i > 0) : (i -|= 1) {
             _ = db.updateCircuitFragment(i, visited);
             if (i == 0) break;
