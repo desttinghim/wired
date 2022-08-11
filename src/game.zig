@@ -50,6 +50,19 @@ const Wire = struct {
             node.pos = b + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, this.nodes.len));
         }
     }
+
+    pub fn addInline(this: *@This(), div: usize, point: Vec2f) !void {
+        const divf = @splat(2, @intToFloat(f32, div));
+        var last = this.end().pos;
+        const dist = point - last;
+        const chunk = dist / divf;
+        var i: usize = 0;
+        while (i < div) : (i += 1) {
+            const next = last + chunk;
+            last = next;
+            try this.nodes.append(Pos.init(next));
+        }
+    }
 };
 
 const Player = struct {
@@ -202,6 +215,11 @@ const playerAnim = pac: {
     break :pac animArr.slice();
 };
 
+fn posFromWorld(coord: world.Coordinate) Vec2f {
+    const tile_size = Vec2{ 8, 8 };
+    return util.vec2ToVec2f(coord.toVec2() * tile_size);
+}
+
 fn loadLevel(lvl: usize) !void {
     fba.reset();
     map.clear();
@@ -236,24 +254,39 @@ fn loadLevel(lvl: usize) !void {
             const coord0 = wire[0].coord.subC(levelc);
             const coord1 = wire[1].coord.subC(levelc);
             w4.tracef("---- Wire [%d, %d] (%d, %d), (%d, %d)", wireArr[0], wireArr[1], coord0.val[0], coord0.val[1], coord1.val[0], coord1.val[1]);
-            const p1 = util.vec2ToVec2f(coord0.toVec2() * tile_size + Vec2{ 4, 4 });
-            const p2 = util.vec2ToVec2f(coord1.toVec2() * tile_size + Vec2{ 4, 4 });
 
             var w = try wires.addOne();
             _ = try w.nodes.resize(0);
-            // const divisions = wire.divisions;
-            const divisions = 10;
-            var i: usize = 0;
-            while (i <= divisions) : (i += 1) {
-                try w.nodes.append(Pos.init(p1));
+            const divisions = 7;
+            var last_coord: world.Coordinate = undefined;
+            for (wireSlice) |world_wire| {
+                switch (world_wire) {
+                    .Begin => |coord| {
+                        last_coord = coord.subC(levelc);
+                        w4.tracef("\t start (%d, %d)", last_coord.val[0], last_coord.val[1]);
+                        try w.nodes.append(Pos.init(posFromWorld(last_coord) + Vec2f{ 4, 4 }));
+                    },
+                    .BeginPinned => |coord| {
+                        last_coord = coord.subC(levelc);
+                        w4.tracef("\t start [a] (%d, %d)", last_coord.val[0], last_coord.val[1]);
+                        try w.nodes.append(Pos.init(posFromWorld(last_coord) + Vec2f{ 4, 4 }));
+                    },
+                    .Point => |offset| {
+                        last_coord = last_coord.addOffset(offset);
+                        w4.tracef("\t point (%d, %d) = last + (%d, %d)", last_coord.val[0], last_coord.val[1], offset[0], offset[1]);
+                        try w.addInline(divisions, posFromWorld(last_coord) + Vec2f{ 4, 4 });
+                    },
+                    .PointPinned => |offset| {
+                        last_coord = last_coord.addOffset(offset);
+                        w4.tracef("\t point (%d, %d) = last + (%d, %d)", last_coord.val[0], last_coord.val[1], offset[0], offset[1]);
+                        try w.addInline(divisions, posFromWorld(last_coord) + Vec2f{ 4, 4 });
+                    },
+                    .End => break,
+                }
             }
-            w.begin().pos = p1;
-            w.end().pos = p2;
 
             w.begin().pinned = wire[0].anchored;
             w.end().pinned = wire[1].anchored;
-
-            w.straighten();
         }
     }
 
@@ -313,27 +346,37 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
     // Save wires back into database
     const levelc = world.Coordinate.fromWorld(level.world_x, level.world_y);
     while (wires.popOrNull()) |*w| {
+        var wire: [10]world.Wire = undefined;
+
+        // Are the ends anchored?
         const aStart = w.begin().pinned;
-        const aEnd = w.begin().pinned;
+
         const divby = @splat(2, @as(f32, 8));
         const wstart = world.Coordinate.fromVec2f(w.begin().pos / divby).addC(levelc);
-        const offset = w.end().pos - w.begin().pos;
-        const end = world.Coordinate.fromVec2f(offset / divby).toOffset();
-        var wire: [3]world.Wire = undefined;
-        if (aStart) {
-            wire[0] = .{ .BeginPinned = wstart };
-        } else {
-            wire[0] = .{ .Begin = wstart };
+
+        w4.tracef("[moveLevel] new wire (%d,%d)", wstart.val[0], wstart.val[1]);
+        wire[0] = if (aStart) .{ .BeginPinned = wstart } else .{ .Begin = wstart };
+        var idx: usize = 1;
+
+        var last_pos = w.begin().pos;
+        for (w.nodes.constSlice()) |point, i| {
+            if (i == 0) continue;
+            const length = util.lengthf(point.pos - last_pos) / 8;
+            if (i % 8 == 0 or length > 6 or i == w.nodes.constSlice().len - 1) {
+                const diff = point.pos - last_pos;
+                const offset = world.Coordinate.fromVec2f(diff / divby).toOffset();
+                wire[idx] = if (point.pinned) .{ .PointPinned = offset } else .{ .Point = offset };
+                idx += 1;
+                last_pos = point.pos;
+                w4.tracef("\t offset (%d,%d)", offset[0], offset[1]);
+            }
         }
 
-        if (aEnd) {
-            wire[1] = .{ .PointPinned = end };
-        } else {
-            wire[1] = .{ .Point = end };
-        }
+        wire[idx] = .End;
+        idx += 1;
 
-        wire[2] = .End;
-        db.addWire(&wire);
+        w4.tracef("\t finished, length %d", idx);
+        db.addWire(wire[0..idx]);
     }
 
     // TODO: Figure out the more principled way for checking boundaries

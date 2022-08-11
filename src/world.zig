@@ -117,6 +117,15 @@ pub const CircuitType = enum(u5) {
     Diode = 11,
     Conduit_Vertical = 12,
     Conduit_Horizontal = 13,
+
+    pub fn canConnect(circuit: CircuitType, side: Direction) bool {
+        return switch (circuit) {
+            .None => false,
+            .Conduit_Vertical => (side != .East and side != .West),
+            .Conduit_Horizontal => (side != .North and side != .South),
+            else => true,
+        };
+    }
 };
 
 pub const TileData = union(enum) {
@@ -263,6 +272,33 @@ pub const Coordinate = struct {
     }
 };
 
+pub const Direction = enum {
+    North,
+    West,
+    East,
+    South,
+
+    pub const each = [_]Direction{ .North, .West, .East, .South };
+
+    pub fn toOffset(dir: Direction) [2]i16 {
+        return switch (dir) {
+            .North => .{ 0, -1 },
+            .West => .{ -1, 0 },
+            .East => .{ 1, 0 },
+            .South => .{ 0, 1 },
+        };
+    }
+
+    pub fn getOpposite(dir: Direction) Direction {
+        return switch (dir) {
+            .North => .South,
+            .West => .East,
+            .East => .West,
+            .South => .North,
+        };
+    }
+};
+
 pub const Level = struct {
     world_x: i8,
     world_y: i8,
@@ -330,6 +366,11 @@ pub const Level = struct {
         const w = @intCast(i32, level.width);
         const i = @intCast(usize, x + y * w);
         return tiles[i];
+    }
+
+    pub fn getCircuit(level: Level, globalc: Coord) ?CircuitType {
+        const tile = level.getTile(globalc) orelse return null;
+        return tile.getCircuit();
     }
 
     pub fn getJoin(level: Level, which: usize) ?Coordinate {
@@ -563,11 +604,11 @@ pub const Wire = union(enum) {
                 try coord.write(writer);
             },
             .Point => |point| {
-                const byte = @bitCast(u8, @intCast(i8, point[0])) | @bitCast(u8, @intCast(i8, point[1])) << 4;
+                const byte = (@bitCast(u8, @intCast(i8, point[0])) & 0b0000_1111) | (@bitCast(u8, @intCast(i8, point[1])) & 0b1111_0000) << 4;
                 try writer.writeByte(byte);
             },
             .PointPinned => |point| {
-                const byte = @bitCast(u8, @intCast(i8, point[0])) | @bitCast(u8, @intCast(i8, point[1])) << 4;
+                const byte = (@bitCast(u8, @intCast(i8, point[0])) & 0b0000_1111) | (@bitCast(u8, @intCast(i8, point[1])) & 0b1111_0000) << 4;
                 try writer.writeByte(byte);
             },
             .End => {},
