@@ -71,6 +71,16 @@ fn make(step: *std.build.Step) !void {
             .wires = &wires,
         });
 
+        for (parsed_level.tiles.?) |tile, i| {
+            if (tile == .tile) {
+                std.log.warn("{:0>2}: {}", .{ i, tile.tile });
+            } else if (tile == .flags) {
+                std.log.warn("{:0>2}: {s} {s}", .{ i, @tagName(tile.flags.solid), @tagName(tile.flags.circuit) });
+            } else {
+                std.log.warn("{:0>2}: {}", .{ i, tile });
+            }
+        }
+
         try levels.append(parsed_level);
     }
     defer for (levels.items) |level| {
@@ -272,14 +282,16 @@ fn parseLevel(opt: struct {
 
     const tiles = parsed_level.tiles.?;
 
+    for (tiles) |_, i| {
+        tiles[i] = world.TileData{ .tile = 0 };
+    }
+
     // Add unchanged tile data
     for (collision.autoLayerTiles) |autotile| {
         const x = @divExact(autotile.px[0], collision.__gridSize);
         const y = @divExact(autotile.px[1], collision.__gridSize);
         const i = @intCast(usize, x + y * width);
-        const sx = @divExact(autotile.src[0], collision.__gridSize);
-        const sy = @divExact(autotile.src[1], collision.__gridSize);
-        const t = sx + sy * 16;
+        const t = autotile.t;
         tiles[i] = world.TileData{ .tile = @intCast(u7, t) };
     }
 
@@ -293,10 +305,8 @@ fn parseLevel(opt: struct {
             0 => .Empty,
             1 => .Solid,
             3 => .Oneway,
-            else => return error.DebrisAndCircuitOverlapped,
+            else => continue,
         };
-        if (cir == .Socket)
-            std.log.warn("[parseLevel] {}: {}", .{ i, cir });
         tiles[i] = world.TileData{ .flags = .{
             .solid = solid,
             .circuit = cir,

@@ -133,25 +133,30 @@ pub const TileData = union(enum) {
         return null;
     }
 
+    const isTileBitMask = 0b1000_0000;
+    const tileBitMask = 0b0111_1111;
+    const solidBitMask = 0b0000_0011;
+    const circuitBitMask = 0b0111_1100;
+
     pub fn toByte(data: TileData) u8 {
         switch (data) {
             .tile => |int| return 0b1000_0000 | @intCast(u8, int),
             .flags => |flags| {
                 const solid = @enumToInt(flags.solid);
                 const circuit = @enumToInt(flags.circuit);
-                return 0b0111_1111 & ((@intCast(u7, solid)) | (@intCast(u7, circuit) << 2));
+                return ((@intCast(u8, solid) & solidBitMask) | ((@intCast(u8, circuit) << 2) & circuitBitMask));
             },
         }
     }
 
     pub fn fromByte(byte: u8) TileData {
-        const is_tile = (0b1000_0000 & byte) > 0;
+        const is_tile = (isTileBitMask & byte) > 0;
         if (is_tile) {
-            const tile = @intCast(u7, (0b0000_0011 & byte));
+            const tile = @intCast(u7, (tileBitMask & byte));
             return TileData{ .tile = tile };
         } else {
-            const solid = (0b0000_0011 & byte);
-            const circuit = @intCast(u5, (0b0111_1100 & byte) >> 2);
+            const solid = @intCast(u2, (solidBitMask & byte));
+            const circuit = @intCast(u5, (circuitBitMask & byte) >> 2);
             return TileData{ .flags = .{
                 .solid = @intToEnum(SolidType, solid),
                 .circuit = @intToEnum(CircuitType, circuit),

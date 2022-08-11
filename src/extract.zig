@@ -21,10 +21,6 @@ pub const Options = struct {
     db: world.Database,
 };
 
-fn is_solid(tile: u7) bool {
-    return tile != 0 and tile != 1;
-}
-
 /// Extracts a compressed level into the map and circuit buffers
 pub fn extractLevel(opt: Options) !void {
     w4.tracef("extract begin");
@@ -56,7 +52,14 @@ pub fn extractLevel(opt: Options) !void {
     for (tiles) |data, i| {
         switch (data) {
             .tile => |tile| {
-                auto_map[i] = .Empty;
+                w4.tracef("[extract tile] [%d] %d", i, tile);
+                const is_solid = world.Tiles.is_solid(tile);
+                const is_oneway = world.Tiles.is_solid(tile);
+                auto_map[i] = solid_type: {
+                    if (is_solid) break :solid_type .Solid;
+                    if (is_oneway) break :solid_type .Oneway;
+                    break :solid_type .Empty;
+                };
                 map.tiles[i] = tile;
                 circuit_map[i] = .None;
             },
@@ -79,6 +82,7 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
+            w4.tracef("[extract] %d (%d, %d)", @enumToInt(auto_map[i]), x, y);
             if (auto_map[i] == .Empty) {
                 autotiles[i] = null;
                 continue;
@@ -125,14 +129,20 @@ pub fn extractLevel(opt: Options) !void {
 
     for (autotiles) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
-            const tile = tileset.find(autotile);
+            const tile = switch (auto_map[i]) {
+                .Solid => tileset.find(autotile),
+                .Oneway => world.Tiles.OneWayMiddle,
+                .Empty => 0,
+            };
             map.tiles[i] = tile;
         }
     }
 
+    var autocircuit = try alloc.alloc(?AutoTile, size);
+    defer alloc.free(autocircuit);
+
     w4.tracef("autotile circuit");
     // Auto generate circuit
-    // Re-use autotiles to save memory
     {
         var i: usize = 0;
         while (i < size) : (i += 1) {
@@ -154,7 +164,7 @@ pub fn extractLevel(opt: Options) !void {
             }
 
             if (circuit_map[i] == .None) {
-                autotiles[i] = null;
+                autocircuit[i] = null;
                 continue;
             }
 
@@ -170,28 +180,28 @@ pub fn extractLevel(opt: Options) !void {
             // Check horizontal neighbors
             if (x == 0) {
                 west = out_of_bounds;
-                east = circuit_map[i + 1] != .None;
+                east = circuit_map[i + 1] != .None and circuit_map[i + 1] != .Conduit_Vertical;
             } else if (x == width - 1) {
-                west = circuit_map[i - 1] != .None;
+                west = circuit_map[i - 1] != .None and circuit_map[i - 1] != .Conduit_Vertical;
                 east = out_of_bounds;
             } else {
-                west = circuit_map[i - 1] != .None;
-                east = circuit_map[i + 1] != .None;
+                west = circuit_map[i - 1] != .None and circuit_map[i - 1] != .Conduit_Vertical;
+                east = circuit_map[i + 1] != .None and circuit_map[i + 1] != .Conduit_Vertical;
             }
 
             // Check vertical neighbours
             if (y == 0) {
                 north = out_of_bounds;
-                south = circuit_map[i + stride] != .None;
+                south = circuit_map[i + stride] != .None and circuit_map[i + stride] != .Conduit_Horizontal;
             } else if (y == height - 1) {
-                north = circuit_map[i - stride] != .None;
+                north = circuit_map[i - stride] != .None and circuit_map[i - stride] != .Conduit_Horizontal;
                 south = out_of_bounds;
             } else {
-                north = circuit_map[i - stride] != .None;
-                south = circuit_map[i + stride] != .None;
+                north = circuit_map[i - stride] != .None and circuit_map[i - stride] != .Conduit_Horizontal;
+                south = circuit_map[i + stride] != .None and circuit_map[i + stride] != .Conduit_Horizontal;
             }
 
-            autotiles[i] = AutoTile{
+            autocircuit[i] = AutoTile{
                 .North = north,
                 .South = south,
                 .West = west,
@@ -200,15 +210,15 @@ pub fn extractLevel(opt: Options) !void {
         }
     }
 
-    for (autotiles) |autotile_opt, i| {
+    for (autocircuit) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
             const tile = switch (circuit_map[i]) {
                 .Conduit,
-                .Conduit_Vertical,
-                .Conduit_Horizontal,
                 .Source,
                 .Join,
                 => opt.conduit.find(autotile),
+                .Conduit_Vertical => opt.conduit.find(.{ .North = true, .South = true, .West = false, .East = false }),
+                .Conduit_Horizontal => opt.conduit.find(.{ .North = false, .South = false, .West = true, .East = true }),
                 .Switch_On => opt.switch_on.find(autotile),
                 .Switch_Off => opt.switch_off.find(autotile),
                 .Plug, .Socket => opt.plug.find(autotile),
