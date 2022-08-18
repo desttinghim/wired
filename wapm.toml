@@ -1,0 +1,18 @@
+[package]
+name = "desttinghim/wired"
+version = "0.2.0"
+description = "A puzzle platformer game with wire physics."
+readme = "README.md"
+repository = "https://github.com/desttinghim/wired"
+license = "ISC"
+
+[[module]]
+name = "wired"
+source = "wired.wasm"
+abi = "wasm4"
+interfaces = { wasm4 = "0.0.1" }
+
+[[command]]
+runner = "wasm4@0.0.1"
+name = "play"
+module = "wired"
