@@ -4,10 +4,10 @@ A puzzle platformer with wires.
 
 ## Controls
 
-Left/Right: Move left and right
-Up/Down: Look at items above and below
-X: Jump
-Z: Select
+- Left/Right: Move left and right
+- Up/Down: Look at items above and below
+- X: Jump
+- Z: Select
 
 ## Dependencies
 
