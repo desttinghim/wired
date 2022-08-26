@@ -3,7 +3,7 @@
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    zig.url = "github:arqv/zig-overlay";
+    zig.url = "github:mitchellh/zig-overlay";
     unstable.url = "nixpkgs/nixos-unstable";
   };
 
@@ -18,7 +18,7 @@
         # nix develop
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            zig.packages.${system}.master.latest
+            zig.packages.${system}.master
             pkgs.butler
             pkgs.binaryen
             pkgs.tiled
