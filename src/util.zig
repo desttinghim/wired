@@ -41,11 +41,11 @@ pub fn vec2cell(vec: Vec2) Cell {
 }
 
 pub fn vec2ToVec2f(vec2: Vec2) Vec2f {
-    return Vec2f{ @intToFloat(f32, vec2[0]), @intToFloat(f32, vec2[1]) };
+    return Vec2f{ @as(f32, @floatFromInt(vec2[0])), @as(f32, @floatFromInt(vec2[1])) };
 }
 
 pub fn vec2fToVec2(vec2f: Vec2f) Vec2 {
-    return Vec2{ @floatToInt(i32, @floor(vec2f[0])), @floatToInt(i32, @floor(vec2f[1])) };
+    return Vec2{ @as(i32, @intFromFloat(@floor(vec2f[0]))), @as(i32, @intFromFloat(@floor(vec2f[1]))) };
 }
 
 pub const AABB = struct {

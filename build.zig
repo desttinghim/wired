@@ -2,10 +2,11 @@ const std = @import("std");
 const LDtkImport = @import("tools/LDtkImport.zig");
 
 pub fn build(b: *std.build.Builder) !void {
-    const assets = std.build.Pkg{
-        .name = "assets",
-        .source = .{ .path = "assets/assets.zig" },
-    };
+    const optimize = b.standardOptimizeOption(.{});
+
+    const assets = b.addModule("assets", .{
+        .source_file = .{ .path = "assets/assets.zig" },
+    });
 
     const ldtk = LDtkImport.create(b, .{
         .source_path = .{ .path = "assets/maps/wired.ldtk" },
@@ -13,15 +14,18 @@ pub fn build(b: *std.build.Builder) !void {
     });
 
     const data_step = b.addOptions();
-    data_step.addOptionFileSource("path", .{.generated = &ldtk.world_data });
+    data_step.addOptionFileSource("path", .{ .generated = &ldtk.world_data });
+    const world_data = data_step.createModule();
 
-    const mode = b.standardReleaseOptions();
-    const lib = b.addSharedLibrary("cart", "src/main.zig", .unversioned);
+    const lib = b.addSharedLibrary(.{
+        .name = "cart",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .optimize = optimize,
+        .target = .{ .cpu_arch = .wasm32, .os_tag = .freestanding },
+    });
     lib.step.dependOn(&data_step.step);
-    lib.addPackage(data_step.getPackage("world_data"));
-    lib.addPackage(assets);
-    lib.setBuildMode(mode);
-    lib.setTarget(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
+    lib.addModule("world_data", world_data);
+    lib.addModule("assets", assets);
     lib.import_memory = true;
     lib.initial_memory = 65536;
     lib.max_memory = 65536;
@@ -31,7 +35,7 @@ pub fn build(b: *std.build.Builder) !void {
     // functions from compiler_rt getting incorrectly marked as exported, which
     // prevents them from being removed even if unused.
     lib.export_symbol_names = &[_][]const u8{ "start", "update" };
-    lib.install();
+    b.installArtifact(lib);
 
     const prefix = b.getInstallPath(.lib, "");
     const opt = b.addSystemCommand(&[_][]const u8{

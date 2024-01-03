@@ -36,7 +36,7 @@ pub const Intensity = enum(u8) {
     active = 1,
     danger = 2,
     pub fn atLeast(lhs: @This(), rhs: @This()) bool {
-        return @enumToInt(lhs) >= @enumToInt(rhs);
+        return @intFromEnum(lhs) >= @intFromEnum(rhs);
     }
 };
 
@@ -60,7 +60,7 @@ pub const Procedural = struct {
             .beat = 15,
             .beatsPerBar = 6,
             .seed = seed,
-            .root = @enumToInt(root),
+            .root = @intFromEnum(root),
             .scale = scale,
             .note = 0,
         };
@@ -118,7 +118,7 @@ pub const Procedural = struct {
             }
         }
         if (this.intensity.atLeast(.calm) and beat == 0 and beatProgress == 0) {
-            cmd.append (.{
+            cmd.append(.{
                 .freq = .{ .start = 220, .end = 110 },
                 .duration = .{ .release = 3 },
                 .volume = 100,

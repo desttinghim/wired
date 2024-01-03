@@ -27,7 +27,7 @@ pub fn update(this: *@This(), out: *usize) void {
 
 pub fn simple(rate: usize, comptime arr: []const usize) [arr.len * 2]Ops {
     var anim: [arr.len * 2]Ops = undefined;
-    inline for (arr) |item, i| {
+    inline for (arr, 0..) |item, i| {
         anim[i * 2] = Ops{ .Index = item };
         anim[i * 2 + 1] = Ops{ .Wait = rate };
     }

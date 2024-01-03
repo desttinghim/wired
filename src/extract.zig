@@ -35,7 +35,7 @@ pub fn extractLevel(opt: Options) !void {
 
     const width = level.width;
     w4.tracef("div exact %d, %d", tiles.len, level.width);
-    const height = @divExact(@intCast(u16, tiles.len), level.width);
+    const height = @divExact(@as(u16, @intCast(tiles.len)), level.width);
     const size = tiles.len;
 
     map.map_size = .{ level.width, height };
@@ -49,7 +49,7 @@ pub fn extractLevel(opt: Options) !void {
     defer alloc.free(circuit_map);
 
     w4.tracef("reading tiles");
-    for (tiles) |data, i| {
+    for (tiles, 0..) |data, i| {
         switch (data) {
             .tile => |tile| {
                 w4.tracef("[extract tile] [%d] %d", i, tile);
@@ -82,7 +82,7 @@ pub fn extractLevel(opt: Options) !void {
             const y = @divTrunc(i, width);
             const stride = width;
 
-            w4.tracef("[extract] %d (%d, %d)", @enumToInt(auto_map[i]), x, y);
+            w4.tracef("[extract] %d (%d, %d)", @intFromEnum(auto_map[i]), x, y);
             if (auto_map[i] == .Empty) {
                 autotiles[i] = null;
                 continue;
@@ -127,7 +127,7 @@ pub fn extractLevel(opt: Options) !void {
         }
     }
 
-    for (autotiles) |autotile_opt, i| {
+    for (autotiles, 0..) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
             const tile = switch (auto_map[i]) {
                 .Solid => tileset.find(autotile),
@@ -151,7 +151,7 @@ pub fn extractLevel(opt: Options) !void {
             const stride = width;
 
             if (circuit_map[i] == .Source) {
-                const levelc = world.Coordinate.fromVec2(.{ @intCast(i32, x), @intCast(i32, y) });
+                const levelc = world.Coordinate.fromVec2(.{ @as(i32, @intCast(x)), @as(i32, @intCast(y)) });
                 const coord = world.Coordinate.fromWorld(level.world_x, level.world_y).addC(levelc);
                 w4.tracef("[extract] source (%d, %d)", coord.val[0], coord.val[1]);
                 if (db.getNodeID(coord)) |node_id| {
@@ -210,7 +210,7 @@ pub fn extractLevel(opt: Options) !void {
         }
     }
 
-    for (autocircuit) |autotile_opt, i| {
+    for (autocircuit, 0..) |autotile_opt, i| {
         if (autotile_opt) |autotile| {
             const tile = switch (circuit_map[i]) {
                 .Conduit,

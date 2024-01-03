@@ -3,16 +3,16 @@ const w4 = @import("wasm4.zig");
 const clearMouse = w4.Mouse{ .x = 0, .y = 0, .buttons = .{ .left = false, .right = false, .middle = false } };
 const clear: u8 = 0x00;
 pub var mouseLast: w4.Mouse = clearMouse;
-pub var gamepad1Last: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad2Last: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad3Last: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad4Last: w4.Gamepad = @bitCast(w4.Gamepad, clear);
+pub var gamepad1Last: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad2Last: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad3Last: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad4Last: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
 
 pub var mouseJustPressed: w4.Mouse = clearMouse;
-pub var gamepad1JustPressed: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad2JustPressed: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad3JustPressed: w4.Gamepad = @bitCast(w4.Gamepad, clear);
-pub var gamepad4JustPressed: w4.Gamepad = @bitCast(w4.Gamepad, clear);
+pub var gamepad1JustPressed: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad2JustPressed: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad3JustPressed: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
+pub var gamepad4JustPressed: w4.Gamepad = @as(w4.Gamepad, @bitCast(clear));
 
 pub const Gamepad = enum { one, two, three, four };
 pub const Button = enum { up, down, left, right, one, two };

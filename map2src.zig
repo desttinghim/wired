@@ -1,10 +1,10 @@
 const std = @import("std");
 
-const PropertyType = enum { @"bool", @"int" };
+const PropertyType = enum { bool, int };
 const Property = struct {
     name: []const u8 = &.{},
-    @"type": PropertyType = .@"bool",
-    value: union(PropertyType) { @"bool": bool, @"int": i64 },
+    type: PropertyType = .bool,
+    value: union(PropertyType) { bool: bool, int: i64 },
 };
 
 const Point = struct {
@@ -21,7 +21,7 @@ const Object = struct {
     polyline: []Point = &.{},
     properties: []Property = &.{},
     rotation: f64 = 0,
-    @"type": enum { wire, source, door, spawn, focus, coin },
+    type: enum { wire, source, door, spawn, focus, coin },
     visible: bool = true,
     width: f64 = 0,
     x: f64 = 0,
@@ -36,7 +36,7 @@ const Layer = struct {
     name: []const u8,
     draworder: enum { topdown, none } = .none,
     opacity: u64,
-    @"type": enum { tilelayer, objectgroup },
+    type: enum { tilelayer, objectgroup },
     visible: bool,
     width: u64 = 0,
     x: i64,
@@ -57,7 +57,7 @@ const MapType = struct {
     tileheight: u64 = 0,
     tilesets: []struct { firstgid: u64, source: []const u8 },
     tilewidth: u64 = 0,
-    @"type": enum { map } = .map,
+    type: enum { map } = .map,
     version: []const u8 = "",
     width: u64 = 0,
 };
@@ -114,7 +114,7 @@ pub fn do() !void {
 
         var outbuffer: [16 * KB]u8 = undefined;
         for (map.layers) |layer| {
-            switch (layer.@"type") {
+            switch (layer.type) {
                 .tilelayer => {
                     var outcontent = try std.fmt.bufPrint(
                         &outbuffer,
@@ -140,7 +140,7 @@ pub fn do() !void {
                     defer focilist.deinit();
 
                     for (layer.objects) |obj| {
-                        switch (obj.@"type") {
+                        switch (obj.type) {
                             .wire => try wirelist.append(obj),
                             .door => try doorlist.append(obj),
                             .coin => try coinlist.append(obj),
@@ -165,7 +165,7 @@ pub fn do() !void {
 
 pub fn length(vec: std.meta.Vector(2, i64)) i64 {
     var squared = vec * vec;
-    return @intCast(i64, std.math.sqrt(@intCast(u64, @reduce(.Add, squared))));
+    return @as(i64, @intCast(std.math.sqrt(@as(u64, @intCast(@reduce(.Add, squared))))));
 }
 
 pub fn appendWires(outlist: *std.ArrayList(u8), wirelist: std.ArrayList(Object)) !void {
@@ -180,14 +180,14 @@ pub fn appendWires(outlist: *std.ArrayList(u8), wirelist: std.ArrayList(Object))
         var p2: std.meta.Vector(2, i64) = .{ 0, 0 };
         var divisions: ?i64 = null;
         for (obj.properties) |p| {
-            if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.@"bool";
-            if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.@"bool";
-            if (std.mem.eql(u8, p.name, "divisions")) divisions = p.value.@"int";
+            if (std.mem.eql(u8, p.name, "anchor1")) a1 = p.value.bool;
+            if (std.mem.eql(u8, p.name, "anchor2")) a2 = p.value.bool;
+            if (std.mem.eql(u8, p.name, "divisions")) divisions = p.value.int;
         }
-        for (obj.polyline) |point, i| {
+        for (obj.polyline, 0..) |point, i| {
             switch (i) {
-                0 => p1 = .{ @floatToInt(i64, obj.x + point.x), @floatToInt(i64, obj.y + point.y) },
-                1 => p2 = .{ @floatToInt(i64, obj.x + point.x), @floatToInt(i64, obj.y + point.y) },
+                0 => p1 = .{ @as(i64, @intFromFloat(obj.x + point.x)), @as(i64, @intFromFloat(obj.y + point.y)) },
+                1 => p2 = .{ @as(i64, @intFromFloat(obj.x + point.x)), @as(i64, @intFromFloat(obj.y + point.y)) },
                 else => return error.TooManyPoints,
             }
         }
@@ -209,7 +209,7 @@ pub fn appendDoors(outlist: *std.ArrayList(u8), doorlist: std.ArrayList(Object))
     try outlist.appendSlice(outcontent);
 
     for (doorlist.items) |obj| {
-        var doorf = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y, 8)) });
+        var doorf = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @as(i32, @intFromFloat(@divTrunc(obj.x, 8))), @as(i32, @intFromFloat(@divTrunc(obj.y, 8))) });
         try outlist.appendSlice(doorf);
     }
     try outlist.appendSlice("};\n");
@@ -221,7 +221,7 @@ pub fn appendSources(outlist: *std.ArrayList(u8), sourcelist: std.ArrayList(Obje
     try outlist.appendSlice(outcontent);
 
     for (sourcelist.items) |obj| {
-        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y, 8)) });
+        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @as(i32, @intFromFloat(@divTrunc(obj.x, 8))), @as(i32, @intFromFloat(@divTrunc(obj.y, 8))) });
         try outlist.appendSlice(sourcef);
     }
     try outlist.appendSlice("};\n");
@@ -233,7 +233,7 @@ pub fn appendCoins(outlist: *std.ArrayList(u8), coinlist: std.ArrayList(Object))
     try outlist.appendSlice(outcontent);
 
     for (coinlist.items) |obj| {
-        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @floatToInt(i32, @divTrunc(obj.x, 8)), @floatToInt(i32, @divTrunc(obj.y - 8, 8)) });
+        var sourcef = try std.fmt.bufPrint(&outbuffer, "Vec2{{ {}, {} }},", .{ @as(i32, @intFromFloat(@divTrunc(obj.x, 8))), @as(i32, @intFromFloat(@divTrunc(obj.y - 8, 8))) });
         try outlist.appendSlice(sourcef);
     }
     try outlist.appendSlice("};\n");
@@ -249,10 +249,10 @@ pub fn appendFoci(outlist: *std.ArrayList(u8), focilist: std.ArrayList(Object)) 
             &outbuffer,
             "AABB{{ .pos = Vec2{{ {}, {} }}, .size = Vec2{{ {}, {} }} }}",
             .{
-                @floatToInt(i32, @divTrunc(obj.x, 8)),
-                @floatToInt(i32, @divTrunc(obj.y, 8)),
-                @floatToInt(i32, @divTrunc(obj.width, 8)),
-                @floatToInt(i32, @divTrunc(obj.height, 8)),
+                @as(i32, @intFromFloat(@divTrunc(obj.x, 8))),
+                @as(i32, @intFromFloat(@divTrunc(obj.y, 8))),
+                @as(i32, @intFromFloat(@divTrunc(obj.width, 8))),
+                @as(i32, @intFromFloat(@divTrunc(obj.height, 8))),
             },
         );
         try outlist.appendSlice(sourcef);
@@ -266,8 +266,8 @@ pub fn appendSpawn(outlist: *std.ArrayList(u8), spawn: Object) !void {
         &outbuffer,
         "pub const spawn: Vec2 = Vec2{{ {}, {} }};\n",
         .{
-            @floatToInt(i32, @divTrunc(spawn.x, 8)),
-            @floatToInt(i32, @divTrunc(spawn.y, 8)),
+            @as(i32, @intFromFloat(@divTrunc(spawn.x, 8))),
+            @as(i32, @intFromFloat(@divTrunc(spawn.y, 8))),
         },
     );
     try outlist.appendSlice(outcontent);

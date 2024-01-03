@@ -33,7 +33,7 @@ pub fn update() State {
     selected = if (selected < 0) 1 else @mod(selected, 2);
 
     if (input.btnp(.one, .one) or input.btnp(.one, .two)) {
-        switch (@intToEnum(MenuOptions, selected)) {
+        switch (@as(MenuOptions, @enumFromInt(selected))) {
             .Continue => return .Game,
             .NewGame => {
                 // _ = w4.diskw("", 0);

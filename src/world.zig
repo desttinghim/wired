@@ -149,11 +149,11 @@ pub const TileData = union(enum) {
 
     pub fn toByte(data: TileData) u8 {
         switch (data) {
-            .tile => |int| return 0b1000_0000 | @intCast(u8, int),
+            .tile => |int| return 0b1000_0000 | @as(u8, @intCast(int)),
             .flags => |flags| {
-                const solid = @enumToInt(flags.solid);
-                const circuit = @enumToInt(flags.circuit);
-                return ((@intCast(u8, solid) & solidBitMask) | ((@intCast(u8, circuit) << 2) & circuitBitMask));
+                const solid = @intFromEnum(flags.solid);
+                const circuit = @intFromEnum(flags.circuit);
+                return ((@as(u8, @intCast(solid)) & solidBitMask) | ((@as(u8, @intCast(circuit)) << 2) & circuitBitMask));
             },
         }
     }
@@ -161,14 +161,14 @@ pub const TileData = union(enum) {
     pub fn fromByte(byte: u8) TileData {
         const is_tile = (isTileBitMask & byte) > 0;
         if (is_tile) {
-            const tile = @intCast(u7, (tileBitMask & byte));
+            const tile = @as(u7, @intCast((tileBitMask & byte)));
             return TileData{ .tile = tile };
         } else {
-            const solid = @intCast(u2, (solidBitMask & byte));
-            const circuit = @intCast(u5, (circuitBitMask & byte) >> 2);
+            const solid = @as(u2, @intCast((solidBitMask & byte)));
+            const circuit = @as(u5, @intCast((circuitBitMask & byte) >> 2));
             return TileData{ .flags = .{
-                .solid = @intToEnum(SolidType, solid),
-                .circuit = @intToEnum(CircuitType, circuit),
+                .solid = @as(SolidType, @enumFromInt(solid)),
+                .circuit = @as(CircuitType, @enumFromInt(circuit)),
             } };
         }
     }
@@ -226,8 +226,8 @@ pub const Coordinate = struct {
     }
 
     pub fn toWorld(coord: Coordinate) [2]i8 {
-        const world_x = @intCast(i8, @divFloor(coord.val[0], LEVELSIZE));
-        const world_y = @intCast(i8, @divFloor(coord.val[1], LEVELSIZE));
+        const world_x = @as(i8, @intCast(@divFloor(coord.val[0], LEVELSIZE)));
+        const world_y = @as(i8, @intCast(@divFloor(coord.val[1], LEVELSIZE)));
         return .{ world_x, world_y };
     }
 
@@ -236,29 +236,29 @@ pub const Coordinate = struct {
     }
 
     pub fn toOffset(coord: Coordinate) [2]i4 {
-        return .{ @intCast(i4, coord.val[0]), @intCast(i4, coord.val[1]) };
+        return .{ @as(i4, @intCast(coord.val[0])), @as(i4, @intCast(coord.val[1])) };
     }
 
     pub fn fromWorld(x: i8, y: i8) Coordinate {
         return .{ .val = .{
-            @intCast(i16, x) * 20,
-            @intCast(i16, y) * 20,
+            @as(i16, @intCast(x)) * 20,
+            @as(i16, @intCast(y)) * 20,
         } };
     }
 
     pub fn fromVec2(vec: @Vector(2, i32)) Coordinate {
-        return .{ .val = .{ @intCast(i16, vec[0]), @intCast(i16, vec[1]) } };
+        return .{ .val = .{ @as(i16, @intCast(vec[0])), @as(i16, @intCast(vec[1])) } };
     }
 
     pub fn fromVec2f(vec: @Vector(2, f32)) Coordinate {
-        return fromVec2(.{ @floatToInt(i32, vec[0]), @floatToInt(i32, vec[1]) });
+        return fromVec2(.{ @as(i32, @intFromFloat(vec[0])), @as(i32, @intFromFloat(vec[1])) });
     }
 
     pub fn toLevelTopLeft(coord: Coordinate) Coordinate {
         const worldc = coord.toWorld();
         return .{ .val = .{
-            @intCast(i16, worldc[0]) * LEVELSIZE,
-            @intCast(i16, worldc[1]) * LEVELSIZE,
+            @as(i16, @intCast(worldc[0])) * LEVELSIZE,
+            @as(i16, @intCast(worldc[1])) * LEVELSIZE,
         } };
     }
 
@@ -311,7 +311,7 @@ pub const Level = struct {
             .world_x = x,
             .world_y = y,
             .width = width,
-            .size = @intCast(u16, buf.len),
+            .size = @as(u16, @intCast(buf.len)),
             .tiles = buf,
         };
     }
@@ -363,8 +363,8 @@ pub const Level = struct {
         if (!globalc.within(worldc, se)) return null;
         const x = globalc.val[0] - worldc.val[0];
         const y = globalc.val[1] - worldc.val[1];
-        const w = @intCast(i32, level.width);
-        const i = @intCast(usize, x + y * w);
+        const w = @as(i32, @intCast(level.width));
+        const i = @as(usize, @intCast(x + y * w));
         return tiles[i];
     }
 
@@ -376,13 +376,13 @@ pub const Level = struct {
     pub fn getJoin(level: Level, which: usize) ?Coordinate {
         const tiles = level.tiles orelse return null;
         var joinCount: usize = 0;
-        for (tiles) |tile, i| {
+        for (tiles, 0..) |tile, i| {
             switch (tile) {
                 .flags => |flag| {
                     if (flag.circuit == .Join) {
                         if (joinCount == which) {
-                            const x = @intCast(i16, @mod(i, 20));
-                            const y = @intCast(i16, @divFloor(i, 20));
+                            const x = @as(i16, @intCast(@mod(i, 20)));
+                            const y = @as(i16, @intCast(@divFloor(i, 20)));
                             return Coord.init(.{ x, y });
                         }
                         joinCount += 1;
@@ -397,13 +397,13 @@ pub const Level = struct {
     pub fn getSwitch(level: Level, which: usize) ?Coordinate {
         const tiles = level.tiles orelse return null;
         var switchCount: usize = 0;
-        for (tiles) |tile, i| {
+        for (tiles, 0..) |tile, i| {
             switch (tile) {
                 .flags => |flag| {
                     if (flag.circuit == .Switch_Off or flag.circuit == .Switch_On) {
                         if (switchCount == which) {
-                            const x = @intCast(i16, @mod(i, 20));
-                            const y = @intCast(i16, @divFloor(i, 20));
+                            const x = @as(i16, @intCast(@mod(i, 20)));
+                            const y = @as(i16, @intCast(@divFloor(i, 20)));
                             return Coord.init(.{ x, y });
                         }
                         switchCount += 1;
@@ -424,11 +424,11 @@ pub const AutoTile = packed struct {
     South: bool,
 
     pub fn to_u4(autotile: AutoTile) u4 {
-        return @bitCast(u4, autotile);
+        return @as(u4, @bitCast(autotile));
     }
 
     pub fn from_u4(int: u4) AutoTile {
-        return @bitCast(AutoTile, int);
+        return @as(AutoTile, @bitCast(int));
     }
 };
 
@@ -534,13 +534,13 @@ pub const Entity = struct {
     }
 
     pub fn write(entity: Entity, writer: anytype) !void {
-        try writer.writeInt(u8, @enumToInt(entity.kind), .Little);
+        try writer.writeInt(u8, @intFromEnum(entity.kind), .Little);
         try entity.coord.write(writer);
     }
 
     pub fn read(reader: anytype) !Entity {
         return Entity{
-            .kind = @intToEnum(EntityKind, try reader.readInt(u8, .Little)),
+            .kind = @as(EntityKind, @enumFromInt(try reader.readInt(u8, .Little))),
             .coord = try Coordinate.read(reader),
         };
     }
@@ -595,7 +595,7 @@ pub const Wire = union(enum) {
     }
 
     pub fn write(wire: Wire, writer: anytype) !void {
-        try writer.writeByte(@enumToInt(wire));
+        try writer.writeByte(@intFromEnum(wire));
         switch (wire) {
             .Begin => |coord| {
                 try coord.write(writer);
@@ -604,11 +604,11 @@ pub const Wire = union(enum) {
                 try coord.write(writer);
             },
             .Point => |point| {
-                const byte = (@bitCast(u8, @intCast(i8, point[0])) & 0b0000_1111) | (@bitCast(u8, @intCast(i8, point[1])) & 0b1111_0000) << 4;
+                const byte = (@as(u8, @bitCast(@as(i8, @intCast(point[0])))) & 0b0000_1111) | (@as(u8, @bitCast(@as(i8, @intCast(point[1])))) & 0b1111_0000) << 4;
                 try writer.writeByte(byte);
             },
             .PointPinned => |point| {
-                const byte = (@bitCast(u8, @intCast(i8, point[0])) & 0b0000_1111) | (@bitCast(u8, @intCast(i8, point[1])) & 0b1111_0000) << 4;
+                const byte = (@as(u8, @bitCast(@as(i8, @intCast(point[0])))) & 0b0000_1111) | (@as(u8, @bitCast(@as(i8, @intCast(point[1])))) & 0b1111_0000) << 4;
                 try writer.writeByte(byte);
             },
             .End => {},
@@ -616,22 +616,22 @@ pub const Wire = union(enum) {
     }
 
     pub fn read(reader: anytype) !Wire {
-        const kind = @intToEnum(WireKind, try reader.readByte());
+        const kind = @as(WireKind, @enumFromInt(try reader.readByte()));
         switch (kind) {
             .Begin => return Wire{ .Begin = try Coord.read(reader) },
             .BeginPinned => return Wire{ .BeginPinned = try Coord.read(reader) },
             .Point => {
                 const byte = try reader.readByte();
                 return Wire{ .Point = .{
-                    @bitCast(i4, @truncate(u4, 0b0000_1111 & byte)),
-                    @bitCast(i4, @truncate(u4, (0b1111_0000 & byte) >> 4)),
+                    @as(i4, @bitCast(@as(u4, @truncate(0b0000_1111 & byte)))),
+                    @as(i4, @bitCast(@as(u4, @truncate((0b1111_0000 & byte) >> 4)))),
                 } };
             },
             .PointPinned => {
                 const byte = try reader.readByte();
                 return Wire{ .PointPinned = .{
-                    @bitCast(i4, @truncate(u4, 0b0000_1111 & byte)),
-                    @bitCast(i4, @truncate(u4, (0b1111_0000 & byte) >> 4)),
+                    @as(i4, @bitCast(@as(u4, @truncate(0b0000_1111 & byte)))),
+                    @as(i4, @bitCast(@as(u4, @truncate((0b1111_0000 & byte) >> 4)))),
                 } };
             },
             .End => return Wire.End,
@@ -669,13 +669,13 @@ pub fn write(
     levels: []Level,
 ) !void {
     // Write number of levels
-    try writer.writeInt(u16, @intCast(u16, level_headers.len), .Little);
+    try writer.writeInt(u16, @as(u16, @intCast(level_headers.len)), .Little);
     // Write number of entities
-    try writer.writeInt(u16, @intCast(u16, entities.len), .Little);
+    try writer.writeInt(u16, @as(u16, @intCast(entities.len)), .Little);
     // Write number of entities
-    try writer.writeInt(u16, @intCast(u16, wires.len), .Little);
+    try writer.writeInt(u16, @as(u16, @intCast(wires.len)), .Little);
     // Write number of circuit nodes
-    try writer.writeInt(u16, @intCast(u16, circuit_nodes.len), .Little);
+    try writer.writeInt(u16, @as(u16, @intCast(circuit_nodes.len)), .Little);
 
     // Write headers
     for (level_headers) |lvl_header| {
@@ -735,14 +735,14 @@ pub const Database = struct {
         var level_headers = try alloc.alloc(LevelHeader, level_count);
 
         // read headers
-        for (level_headers) |_, i| {
+        for (level_headers, 0..) |_, i| {
             level_headers[i] = try LevelHeader.read(reader);
         }
 
         // read entities
         var entities = try alloc.alloc(Entity, entity_count);
 
-        for (entities) |_, i| {
+        for (entities, 0..) |_, i| {
             entities[i] = try Entity.read(reader);
         }
 
@@ -759,12 +759,12 @@ pub const Database = struct {
         // read circuits
         var circuit_nodes = try alloc.alloc(CircuitNode, node_count);
 
-        for (circuit_nodes) |_, i| {
+        for (circuit_nodes, 0..) |_, i| {
             circuit_nodes[i] = try CircuitNode.read(reader);
         }
 
         // Save where the rest of the data ended, and the level data begins
-        var level_data_begin = @intCast(usize, try cursor.getPos());
+        var level_data_begin = @as(usize, @intCast(try cursor.getPos()));
 
         return Database{
             .cursor = cursor,
@@ -799,7 +799,7 @@ pub const Database = struct {
     }
 
     pub fn findLevel(db: *Database, x: i8, y: i8) ?usize {
-        for (db.level_info) |level, i| {
+        for (db.level_info, 0..) |level, i| {
             if (level.x == x and level.y == y) {
                 return i;
             }
@@ -810,9 +810,9 @@ pub const Database = struct {
     // Circuit functions
 
     pub fn getNodeID(db: Database, coord: Coord) ?NodeID {
-        for (db.circuit_info) |node, i| {
+        for (db.circuit_info, 0..) |node, i| {
             if (!coord.eq(node.coord)) continue;
-            return @intCast(NodeID, i);
+            return @as(NodeID, @intCast(i));
         }
         return null;
     }
@@ -840,7 +840,7 @@ pub const Database = struct {
         const coord1 = plug1.addC(levelc);
         const coord2 = plug2.addC(levelc);
         var found: usize = 0;
-        for (db.circuit_info) |node, i| {
+        for (db.circuit_info, 0..) |node, i| {
             if (!coord1.eq(node.coord) and !coord2.eq(node.coord)) continue;
             found += 1;
             if (db.circuit_info[i].kind == .Socket) {
@@ -862,7 +862,7 @@ pub const Database = struct {
     }
 
     pub fn isEnergized(db: *Database, coord: Coord) bool {
-        for (db.circuit_info) |node, i| {
+        for (db.circuit_info, 0..) |node, i| {
             if (!coord.eq(node.coord)) continue;
             return db.circuit_info[i].energized;
         }
@@ -930,7 +930,7 @@ pub const Database = struct {
                 db.circuit_info[i].energized = db.updateCircuitFragment(Outlet, visited);
             },
         }
-                w4.tracef("[updateCircuitFragment] %d end", i);
+        w4.tracef("[updateCircuitFragment] %d end", i);
         return db.circuit_info[i].energized;
     }
 
@@ -949,7 +949,7 @@ pub const Database = struct {
 
     // Entity functions
     pub fn getEntityID(database: *Database, coord: Coordinate) ?usize {
-        for (database.entities) |entity, i| {
+        for (database.entities, 0..) |entity, i| {
             if (!entity.coord.eq(coord)) continue;
             return i;
         }
@@ -1164,7 +1164,7 @@ pub const NodeKind = union(NodeEnum) {
 
     pub fn read(reader: anytype) !NodeKind {
         var kind: NodeKind = undefined;
-        const nodeEnum = @intToEnum(NodeEnum, try reader.readInt(u8, .Little));
+        const nodeEnum = @as(NodeEnum, @enumFromInt(try reader.readInt(u8, .Little)));
         switch (nodeEnum) {
             .And => {
                 kind = .{ .And = .{
@@ -1219,7 +1219,7 @@ pub const NodeKind = union(NodeEnum) {
     }
 
     pub fn write(kind: NodeKind, writer: anytype) !void {
-        try writer.writeInt(u8, @enumToInt(kind), .Little);
+        try writer.writeInt(u8, @intFromEnum(kind), .Little);
         switch (kind) {
             .And => |And| {
                 try writer.writeInt(NodeID, And[0], .Little);

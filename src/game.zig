@@ -45,14 +45,14 @@ const Wire = struct {
         const b = this.begin().pos;
         const e = this.end().pos;
         const size = e - b;
-        for (this.nodes.slice()) |*node, i| {
+        for (this.nodes.slice(), 0..) |*node, i| {
             if (i == 0 or i == this.nodes.len - 1) continue;
-            node.pos = b + @splat(2, @intToFloat(f32, i)) * size / @splat(2, @intToFloat(f32, this.nodes.len));
+            node.pos = b + @splat(2, @as(f32, @floatFromInt(i))) * size / @splat(2, @as(f32, @floatFromInt(this.nodes.len)));
         }
     }
 
     pub fn addInline(this: *@This(), div: usize, point: Vec2f) !void {
-        const divf = @splat(2, @intToFloat(f32, div));
+        const divf = @splat(2, @as(f32, @floatFromInt(div)));
         var last = this.end().pos;
         const dist = point - last;
         const chunk = dist / divf;
@@ -97,7 +97,7 @@ const ParticleSystem = struct {
     pub fn update(this: *@This()) !void {
         var physics = .{ .gravity = Vec2f{ 0, 0.1 }, .friction = Vec2f{ 0.1, 0.1 } };
         var remove = try std.BoundedArray(usize, MAXPARTICLES).init(0);
-        for (this.particles.slice()) |*part, i| {
+        for (this.particles.slice(), 0..) |*part, i| {
             if (!inView(part.pos.pos)) {
                 try remove.append(i);
                 continue;
@@ -308,7 +308,7 @@ fn loadLevel(lvl: usize) !void {
                 const node_id = db.getNodeID(globalc) orelse continue;
                 circuit.addSource(.{ .coord = join, .node_id = node_id });
             }
-            w4.tracef("---- Join %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @boolToInt(e));
+            w4.tracef("---- Join %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @intFromBool(e));
         }
     }
 
@@ -321,7 +321,7 @@ fn loadLevel(lvl: usize) !void {
                 e = true;
                 if (state != 0) circuit.switchOn(levelc);
             }
-            w4.tracef("---- Switch %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @boolToInt(e));
+            w4.tracef("---- Switch %d: (%d, %d) <%d>", i, globalc.val[0], globalc.val[1], @intFromBool(e));
         }
     }
 
@@ -359,7 +359,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
         var idx: usize = 1;
 
         var last_pos = w.begin().pos;
-        for (w.nodes.constSlice()) |point, i| {
+        for (w.nodes.constSlice(), 0..) |point, i| {
             if (i == 0) continue;
             const length = util.lengthf(point.pos - last_pos) / 8;
             if (i % 8 == 0 or length > 6 or i == w.nodes.constSlice().len - 1) {
@@ -388,7 +388,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
             const lvl = db.findLevel(x, y) orelse return error.NoLevelLeft;
 
             try loadLevel(lvl);
-            player.pos.pos[0] = 160 - @intToFloat(f32, @divFloor(player.sprite.size[0], 2));
+            player.pos.pos[0] = 160 - @as(f32, @floatFromInt(@divFloor(player.sprite.size[0], 2)));
         },
         .R => {
             const x = level.world_x + 1;
@@ -396,7 +396,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
             const lvl = db.findLevel(x, y) orelse return error.NoLevelRight;
 
             try loadLevel(lvl);
-            player.pos.pos[0] = @intToFloat(f32, @divFloor(player.sprite.size[0], 2));
+            player.pos.pos[0] = @as(f32, @floatFromInt(@divFloor(player.sprite.size[0], 2)));
         },
         .U => {
             const x = level.world_x;
@@ -412,7 +412,7 @@ fn moveLevel(direction: enum { L, R, U, D }) !void {
             const lvl = db.findLevel(x, y) orelse return error.NoLevelDown;
 
             try loadLevel(lvl);
-            player.pos.pos[1] = @intToFloat(f32, player.sprite.size[1]) - 4;
+            player.pos.pos[1] = @as(f32, @floatFromInt(player.sprite.size[1])) - 4;
         },
     }
     player.pos.last = player.pos.pos - velocity;
@@ -501,7 +501,7 @@ pub fn update(time: usize) !State {
     {
         var shouldSave = false;
         var remove = try std.BoundedArray(usize, 10).init(0);
-        for (coins.slice()) |*coin, i| {
+        for (coins.slice(), 0..) |*coin, i| {
             staticAnimProcess(1, &coin.sprite, &coin.anim);
             drawProcess(1, &coin.pos, &coin.sprite);
             if (coin.area.addv(coin.pos.pos).overlaps(player.kinematic.col.addv(player.pos.pos))) {
@@ -664,7 +664,7 @@ fn getNearestPlugInteraction(pos: Vec2f, wireID: usize, which: usize) ?Interacti
 fn getNearestWireInteraction(pos: Vec2f, range: f32) ?Interaction {
     var newIndicator: ?Interaction = null;
     var minDistance: f32 = range;
-    for (wires.slice()) |*wire, wireID| {
+    for (wires.slice(), 0..) |*wire, wireID| {
         const begin = wire.begin().pos;
         const end = wire.end().pos;
         var dist = util.distancef(begin, pos);
@@ -778,7 +778,7 @@ fn manipulationProcess(pos: *Pos, control: *Control) !void {
 
 fn updateCircuit() !void {
     circuit.clear();
-    for (wires.slice()) |*wire, wireID| {
+    for (wires.slice(), 0..) |*wire, wireID| {
         wire.enabled = false;
         if (!wire.begin().pinned or !wire.end().pinned) continue;
         const nodes = wire.nodes.constSlice();
@@ -832,8 +832,8 @@ fn updateCircuit() !void {
 }
 
 fn printCircuit() void {
-    for (db.circuit_info) |node, n| {
-        const e = @boolToInt(node.energized);
+    for (db.circuit_info, 0..) |node, n| {
+        const e = @intFromBool(node.energized);
         const x = node.coord.val[0];
         const y = node.coord.val[1];
         switch (node.kind) {
@@ -882,7 +882,7 @@ fn wirePhysicsProcess(dt: f32, wire: *Wire) !void {
 const wireSegmentMaxLength = 4;
 
 fn wireMaxLength(wire: *Wire) f32 {
-    return @intToFloat(f32, wire.nodes.len) * wireSegmentMaxLength;
+    return @as(f32, @floatFromInt(wire.nodes.len)) * wireSegmentMaxLength;
 }
 
 fn wireLength(wire: *Wire) f32 {
@@ -913,7 +913,7 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
     if (!inView(wire.begin().pos) and !inView(wire.end().pos)) return;
 
     w4.DRAW_COLORS.* = if (wire.enabled) 0x0002 else 0x0003;
-    for (nodes) |node, i| {
+    for (nodes, 0..) |node, i| {
         if (i == 0) continue;
         const offset = (camera * Map.tile_size);
         w4.line(vec2ftovec2(nodes[i - 1].pos) - offset, vec2ftovec2(node.pos) - offset);
@@ -921,11 +921,11 @@ fn wireDrawProcess(_: f32, wire: *Wire) void {
 }
 
 fn vec2tovec2f(vec2: w4.Vec2) Vec2f {
-    return Vec2f{ @intToFloat(f32, vec2[0]), @intToFloat(f32, vec2[1]) };
+    return Vec2f{ @as(f32, @floatFromInt(vec2[0])), @as(f32, @floatFromInt(vec2[1])) };
 }
 
 fn vec2ftovec2(vec2f: Vec2f) w4.Vec2 {
-    return w4.Vec2{ @floatToInt(i32, vec2f[0]), @floatToInt(i32, vec2f[1]) };
+    return w4.Vec2{ @as(i32, @intFromFloat(vec2f[0])), @as(i32, @intFromFloat(vec2f[1])) };
 }
 
 fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
@@ -937,7 +937,7 @@ fn drawProcess(_: f32, pos: *Pos, sprite: *Sprite) void {
 fn draw_sprite(pos: Vec2, sprite: Sprite) void {
     w4.DRAW_COLORS.* = 0x2210;
     const index = sprite.index;
-    const t = w4.Vec2{ @intCast(i32, (index * 8) % 128), @intCast(i32, (index * 8) / 128) };
+    const t = w4.Vec2{ @as(i32, @intCast((index * 8) % 128)), @as(i32, @intCast((index * 8) / 128)) };
     w4.blitSub(&assets.tiles, pos, sprite.size, t, 128, sprite.flags);
 }
 
@@ -1048,7 +1048,7 @@ fn velocityProcess(_: f32, pos: *Pos) void {
     if (pos.pinned) return;
     var vel = pos.pos - pos.last;
 
-    vel = @minimum(Vec2f{ 8, 8 }, @maximum(Vec2f{ -8, -8 }, vel));
+    vel = @min(Vec2f{ 8, 8 }, @max(Vec2f{ -8, -8 }, vel));
 
     pos.last = pos.pos;
     pos.pos += vel;

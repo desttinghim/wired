@@ -58,7 +58,7 @@ const Side = enum(u2) {
         };
     }
     pub fn side(s: Side) u2 {
-        return @enumToInt(s);
+        return @intFromEnum(s);
     }
     pub fn dir(s: Side) Cell {
         return switch (s) {
@@ -194,7 +194,7 @@ pub fn init(opt: Options) @This() {
 
 pub fn indexOf(this: @This(), cell: Cell) ?usize {
     if (cell[0] < 0 or cell[0] >= this.map_size[0] or cell[1] >= this.map_size[1] or cell[1] < 0) return null;
-    return @intCast(usize, @mod(cell[0], this.map_size[0]) + (cell[1] * this.map_size[1]));
+    return @as(usize, @intCast(@mod(cell[0], this.map_size[0]) + (cell[1] * this.map_size[1])));
 }
 
 pub fn bridge(this: *@This(), coords: [2]world.Coordinate, bridgeID: usize) void {
@@ -342,27 +342,27 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator, db: world.Database, level:
             continue;
         }
         if (T.is_switch(tile)) {
-            const n = node.coord.add(.{0,-1}) ;
-            const w = node.coord.add(.{-1,0}) ;
-            const e = node.coord.add(.{1,0}) ;
-            const s = node.coord.add(.{0,1}) ;
+            const n = node.coord.add(.{ 0, -1 });
+            const w = node.coord.add(.{ -1, 0 });
+            const e = node.coord.add(.{ 1, 0 });
+            const s = node.coord.add(.{ 0, 1 });
 
-            const nid = db.getLevelNodeID(level, n) ;
-            const wid = db.getLevelNodeID(level, w) ;
-            const eid = db.getLevelNodeID(level, e) ;
-            const sid = db.getLevelNodeID(level, s) ;
+            const nid = db.getLevelNodeID(level, n);
+            const wid = db.getLevelNodeID(level, w);
+            const eid = db.getLevelNodeID(level, e);
+            const sid = db.getLevelNodeID(level, s);
 
-            if(nid) |new_id| try q.insert(.{ .node_id = new_id, .coord = n });
-            if(wid) |new_id| try q.insert(.{ .node_id = new_id, .coord = w });
-            if(eid) |new_id| try q.insert(.{ .node_id = new_id, .coord = e });
-            if(sid) |new_id| try q.insert(.{ .node_id = new_id, .coord = s });
+            if (nid) |new_id| try q.insert(.{ .node_id = new_id, .coord = n });
+            if (wid) |new_id| try q.insert(.{ .node_id = new_id, .coord = w });
+            if (eid) |new_id| try q.insert(.{ .node_id = new_id, .coord = e });
+            if (sid) |new_id| try q.insert(.{ .node_id = new_id, .coord = s });
             continue;
         }
-        for (get_outputs(tile)) |conductor, i| {
+        for (get_outputs(tile), 0..) |conductor, i| {
             // w4.tracef("[fill] outputs");
             if (!conductor) continue;
             // w4.tracef("[fill] conductor");
-            const s = @intToEnum(Side, i);
+            const s = @as(Side, @enumFromInt(i));
             const delta = s.dir();
             // TODO: check that cell can recieve from this side
             const nextCoord = node.coord.addC(world.Coordinate.fromVec2(delta));
@@ -374,7 +374,7 @@ pub fn fill(this: *@This(), alloc: std.mem.Allocator, db: world.Database, level:
             // w4.tracef("[fill] within %d", nextCoord.within(tl, br));
             const nextTile = this.getCoord(nextCoord) orelse 0;
             // w4.tracef("[fill] nextTile");
-            if (get_inputs(nextTile)[@enumToInt(s.opposite())]) {
+            if (get_inputs(nextTile)[@intFromEnum(s.opposite())]) {
                 // w4.tracef("[fill] get_inputs");
                 try q.insert(.{
                     .node_id = node.node_id,
@@ -417,7 +417,7 @@ pub fn draw(this: @This(), db: world.Database, offset: Vec2) void {
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
-            const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) };
+            const cell = Vec2{ @as(i32, @intCast(x)), @as(i32, @intCast(y)) };
             const pos = cell * tile_size;
             const coord = world.Coordinate.fromVec2(cell + offset);
             const tile = this.getCoord(coord) orelse continue;
@@ -425,8 +425,8 @@ pub fn draw(this: @This(), db: world.Database, offset: Vec2) void {
             const energized = if (this.getNodeID(coord)) |node| db.circuit_info[node].energized else false;
             if (energized) w4.DRAW_COLORS.* = 0x0210 else w4.DRAW_COLORS.* = 0x0310;
             const t = Vec2{
-                @intCast(i32, (tile % tilemap_width) * tile_size[0]),
-                @intCast(i32, (tile / tilemap_width) * tile_size[0]),
+                @as(i32, @intCast((tile % tilemap_width) * tile_size[0])),
+                @as(i32, @intCast((tile / tilemap_width) * tile_size[0])),
             };
             w4.blitSub(
                 &assets.tiles,

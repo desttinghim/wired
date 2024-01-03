@@ -23,7 +23,12 @@ pub fn create(b: *std.build.Builder, opt: struct {
 }) *@This() {
     var result = b.allocator.create(LDtkImport) catch @panic("memory");
     result.* = LDtkImport{
-        .step = std.build.Step.init(.custom, "convert and embed a ldtk map file", b.allocator, make),
+        .step = std.build.Step.init(.{
+            .id = .custom,
+            .name = "convert and embed a ldtk map file",
+            .owner = b,
+            .makeFn = make,
+        }),
         .builder = b,
         .source_path = opt.source_path,
         .output_name = opt.output_name,
@@ -33,7 +38,8 @@ pub fn create(b: *std.build.Builder, opt: struct {
     return result;
 }
 
-fn make(step: *std.build.Step) !void {
+fn make(step: *std.build.Step, progress: *std.Progress.Node) !void {
+    _ = progress;
     const this = @fieldParentPtr(LDtkImport, "step", step);
 
     const allocator = this.builder.allocator;
@@ -93,11 +99,11 @@ fn make(step: *std.build.Step) !void {
     var circuit = try buildCircuit(allocator, levels.items);
     defer circuit.deinit();
     // TODO
-    for (circuit.items) |node, i| {
+    for (circuit.items, 0..) |node, i| {
         std.log.warn("{:0>2}: {}", .{ i, node });
     }
 
-    for (wires.items) |node, i| {
+    for (wires.items, 0..) |node, i| {
         std.log.warn("Wire {:0>2}: {any}", .{ i, node });
     }
 
@@ -106,7 +112,7 @@ fn make(step: *std.build.Step) !void {
     var level_headers = std.ArrayList(world.LevelHeader).init(allocator);
     defer level_headers.deinit();
 
-    for (levels.items) |level, i| {
+    for (levels.items, 0..) |level, i| {
         if (level_headers.items.len == 0) {
             try level_headers.append(.{
                 .x = level.world_x,
@@ -117,7 +123,7 @@ fn make(step: *std.build.Step) !void {
         }
         const last_offset = level_headers.items[i - 1].offset;
         const last_size = try levels.items[i - 1].calculateSize();
-        const offset = @intCast(u16, last_offset + last_size);
+        const offset = @as(u16, @intCast(last_offset + last_size));
         try level_headers.append(.{
             .x = level.world_x,
             .y = level.world_y,
@@ -141,7 +147,6 @@ fn make(step: *std.build.Step) !void {
 
     // Open output file and write data into it
     cwd.makePath(this.builder.getInstallPath(.lib, "")) catch |e| switch (e) {
-        error.PathAlreadyExists => {},
         else => return e,
     };
     try cwd.writeFile(output, data.items);
@@ -165,8 +170,8 @@ fn parseLevel(opt: struct {
 
     const layers = level.layerInstances orelse return error.NoLayers;
 
-    const world_x: i8 = @intCast(i8, @divFloor(level.worldX, (ldtk.worldGridWidth orelse 160)));
-    const world_y: i8 = @intCast(i8, @divFloor(level.worldY, (ldtk.worldGridHeight orelse 160)));
+    const world_x: i8 = @as(i8, @intCast(@divFloor(level.worldX, (ldtk.worldGridWidth orelse 160))));
+    const world_y: i8 = @as(i8, @intCast(@divFloor(level.worldY, (ldtk.worldGridHeight orelse 160))));
 
     var circuit_layer: ?LDtk.LayerInstance = null;
     var collision_layer: ?LDtk.LayerInstance = null;
@@ -196,8 +201,8 @@ fn parseLevel(opt: struct {
                 // than the rest
                 if (kind_opt) |kind| {
                     const entc = Coord.init(.{
-                        @intCast(i16, entity.__grid[0]),
-                        @intCast(i16, entity.__grid[1]),
+                        @as(i16, @intCast(entity.__grid[0])),
+                        @as(i16, @intCast(entity.__grid[1])),
                     });
                     const world_entity = world.Entity{ .kind = kind, .coord = levelc.addC(entc) };
                     try entity_array.append(world_entity);
@@ -206,25 +211,25 @@ fn parseLevel(opt: struct {
                     var anchor1 = false;
                     var anchor2 = false;
                     const p1_c = Coord.init(.{
-                        @intCast(i16, entity.__grid[0]),
-                        @intCast(i16, entity.__grid[1]),
+                        @as(i16, @intCast(entity.__grid[0])),
+                        @as(i16, @intCast(entity.__grid[1])),
                     });
-                    std.log.warn("[parseLevel:wire] {}", .{ p1_c });
+                    std.log.warn("[parseLevel:wire] {}", .{p1_c});
                     var points: []Coord = undefined;
                     for (entity.fieldInstances) |field| {
                         if (std.mem.eql(u8, field.__identifier, "Anchor")) {
-                            const anchors = field.__value.Array.items;
-                            anchor1 = anchors[0].Bool;
-                            anchor2 = anchors[1].Bool;
+                            const anchors = field.__value.array.items;
+                            anchor1 = anchors[0].bool;
+                            anchor2 = anchors[1].bool;
                         } else if (std.mem.eql(u8, field.__identifier, "Point")) {
-                            points = try allocator.alloc(Coord, field.__value.Array.items.len);
-                            for (field.__value.Array.items) |point, i| {
-                                const x = point.Object.get("cx").?;
-                                const y = point.Object.get("cy").?;
-                                std.log.warn("\t{} {}", .{ x.Integer, y.Integer });
+                            points = try allocator.alloc(Coord, field.__value.array.items.len);
+                            for (field.__value.array.items, 0..) |point, i| {
+                                const x = point.object.get("cx").?;
+                                const y = point.object.get("cy").?;
+                                std.log.warn("\t{} {}", .{ x.integer, y.integer });
                                 points[i] = Coord.init(.{
-                                    @intCast(i16, x.Integer),
-                                    @intCast(i16, y.Integer),
+                                    @as(i16, @intCast(x.integer)),
+                                    @as(i16, @intCast(y.integer)),
                                 });
                             }
                         }
@@ -238,7 +243,7 @@ fn parseLevel(opt: struct {
 
                     std.log.warn("\tConverting to wire nodes", .{});
                     var last_point = p1_c;
-                    for (points) |point, i| {
+                    for (points, 0..) |point, i| {
                         const offset = point.subC(last_point).toOffset();
                         std.log.warn("\toffset: {} {}", .{ offset[0], offset[1] });
                         last_point = point;
@@ -281,21 +286,21 @@ fn parseLevel(opt: struct {
     std.debug.assert(circuit.__cWid == collision.__cWid);
     std.debug.assert(circuit.__cHei == collision.__cHei);
 
-    const width = @intCast(u16, circuit.__cWid);
-    const size = @intCast(u16, width * circuit.__cHei);
+    const width = @as(u16, @intCast(circuit.__cWid));
+    const size = @as(u16, @intCast(width * circuit.__cHei));
 
     // Entities go into global scope now
     var parsed_level = world.Level{
         .world_x = world_x,
         .world_y = world_y,
-        .width = @intCast(u16, width),
-        .size = @intCast(u16, size),
+        .width = @as(u16, @intCast(width)),
+        .size = @as(u16, @intCast(size)),
         .tiles = try allocator.alloc(world.TileData, size),
     };
 
     const tiles = parsed_level.tiles.?;
 
-    for (tiles) |_, i| {
+    for (tiles, 0..) |_, i| {
         tiles[i] = world.TileData{ .tile = 0 };
     }
 
@@ -303,14 +308,14 @@ fn parseLevel(opt: struct {
     for (collision.autoLayerTiles) |autotile| {
         const x = @divExact(autotile.px[0], collision.__gridSize);
         const y = @divExact(autotile.px[1], collision.__gridSize);
-        const i = @intCast(usize, x + y * width);
+        const i = @as(usize, @intCast(x + y * width));
         const t = autotile.t;
-        tiles[i] = world.TileData{ .tile = @intCast(u7, t) };
+        tiles[i] = world.TileData{ .tile = @as(u7, @intCast(t)) };
     }
 
     // Add circuit tiles
-    for (circuit.intGridCsv) |cir64, i| {
-        const cir = @intToEnum(world.CircuitType, @intCast(u5, cir64));
+    for (circuit.intGridCsv, 0..) |cir64, i| {
+        const cir = @as(world.CircuitType, @enumFromInt(@as(u5, @intCast(cir64))));
         const col = collision.intGridCsv[i];
         if (cir != .None and col == 2) return error.DebrisAndCircuitOverlapped;
         if (cir == .None) continue;
@@ -359,14 +364,14 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
 
     for (levels) |level| {
         // Use a global coordinate system for our algorithm
-        const global_x = @intCast(i16, level.world_x) * 20;
-        const global_y = @intCast(i16, level.world_y) * 20;
-        for (level.tiles orelse continue) |tileData, i| {
-            const x = global_x + @intCast(i16, @mod(i, level.width));
-            const y = global_y + @intCast(i16, @divTrunc(i, level.width));
+        const global_x = @as(i16, @intCast(level.world_x)) * 20;
+        const global_y = @as(i16, @intCast(level.world_y)) * 20;
+        for (level.tiles orelse continue, 0..) |tileData, i| {
+            const x = global_x + @as(i16, @intCast(@mod(i, level.width)));
+            const y = global_y + @as(i16, @intCast(@divTrunc(i, level.width)));
             const search_item = try alloc.create(Node);
             search_item.* = .{ .data = .{
-                .last_node = @intCast(world.NodeID, nodes.items.len),
+                .last_node = @as(world.NodeID, @intCast(nodes.items.len)),
                 .coord = Coord.init(.{ x, y }),
             } };
             switch (tileData) {
@@ -436,7 +441,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     .Conduit_Vertical => {},
                     .Source => {}, // Do nothing, but add everything around the source
                     .Socket => {
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .Socket = null },
                             .coord = coord,
@@ -456,7 +461,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         continue;
                     },
                     .Outlet => {
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .Outlet = last_node },
                             .coord = coord,
@@ -466,7 +471,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     },
                     .Switch_Off => {
                         // Add switch
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .Switch = .{
                                 .source = last_node,
@@ -483,7 +488,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                             const next_coord = coord.add(side.toOffset());
                             if (level.getCircuit(next_coord)) |circuit| {
                                 if (circuit.canConnect(side.getOpposite()) and side != dir) {
-                                    const outlet = @intCast(world.NodeID, nodes.items.len);
+                                    const outlet = @as(world.NodeID, @intCast(nodes.items.len));
                                     const which = if (side == .North or side == .South) @as(u8, 1) else @as(u8, 0);
                                     try nodes.append(.{
                                         .kind = .{ .SwitchOutlet = .{
@@ -504,7 +509,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                     },
                     .Switch_On => {
                         // Add switch
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .Switch = .{
                                 .source = last_node,
@@ -520,7 +525,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         if (last_coord.toLevelTopLeft().eq(coord.toLevelTopLeft())) {
                             std.log.warn("Join first side", .{});
                         } else {
-                            next_node = @intCast(world.NodeID, nodes.items.len);
+                            next_node = @as(world.NodeID, @intCast(nodes.items.len));
                             std.log.warn("Join second side", .{});
                             try nodes.append(.{
                                 .kind = .{ .Join = last_node },
@@ -531,7 +536,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         }
                     },
                     .And => {
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .And = .{ std.math.maxInt(world.NodeID), std.math.maxInt(world.NodeID) } },
                             .coord = coord,
@@ -540,7 +545,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                         try source_node.append(last_node);
                     },
                     .Xor => {
-                        next_node = @intCast(world.NodeID, nodes.items.len);
+                        next_node = @as(world.NodeID, @intCast(nodes.items.len));
                         try nodes.append(.{
                             .kind = .{ .Xor = .{ std.math.maxInt(world.NodeID), std.math.maxInt(world.NodeID) } },
                             .coord = coord,
@@ -597,7 +602,7 @@ pub fn buildCircuit(alloc: std.mem.Allocator, levels: []world.Level) !std.ArrayL
                 defer neighbors.deinit();
 
                 std.log.warn("[{}]: Found {} neighbors", .{ i, neighbors.items.len });
-                for (neighbors.items) |neighbor, a| {
+                for (neighbors.items, 0..) |neighbor, a| {
                     std.log.warn("\tNeighbor {}: [{}] {}", .{ a, neighbor.id, neighbor.side });
                     if (neighbor.side == .West) nodes.items[i].kind.And[0] = neighbor.id;
                     if (neighbor.side == .East) nodes.items[i].kind.And[1] = neighbor.id;
@@ -742,8 +747,8 @@ fn getLevel(levels: []world.Level, x: i8, y: i8) ?world.Level {
 }
 
 fn getNode(nodes: []world.CircuitNode, coord: Coord) ?world.NodeID {
-    for (nodes) |node, i| {
-        if (node.coord.eq(coord)) return @intCast(world.NodeID, i);
+    for (nodes, 0..) |node, i| {
+        if (node.coord.eq(coord)) return @as(world.NodeID, @intCast(i));
     }
     return null;
 }

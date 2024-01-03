@@ -13,7 +13,7 @@ pub const x = 0;
 pub const y = 1;
 
 pub fn texLen(size: Vec2) usize {
-    return @intCast(usize, std.math.divCeil(i32, size[x] * size[y] * 2, 8) catch unreachable);
+    return @as(usize, @intCast(std.math.divCeil(i32, size[x] * size[y] * 2, 8) catch unreachable));
 }
 
 pub const Mbl = enum { mut, cons };
@@ -49,24 +49,24 @@ pub fn Tex(comptime mbl: Mbl) type {
         }
 
         pub fn blit(dest: Tex(.mut), dest_ul: Vec2, src: Tex(.cons), src_ul: Vec2, src_wh: Vec2, remap_colors: [4]u3, scale: Vec2) void {
-            for (range(@intCast(usize, src_wh[y]))) |_, y_usz| {
-                const yp = @intCast(i32, y_usz);
-                for (range(@intCast(usize, src_wh[x]))) |_, x_usz| {
-                    const xp = @intCast(i32, x_usz);
+            for (range(@as(usize, @intCast(src_wh[y]))), 0..) |_, y_usz| {
+                const yp = @as(i32, @intCast(y_usz));
+                for (range(@as(usize, @intCast(src_wh[x]))), 0..) |_, x_usz| {
+                    const xp = @as(i32, @intCast(x_usz));
                     const pos = Vec2{ xp, yp };
 
                     const value = remap_colors[src.get(src_ul + pos)];
                     if (value <= std.math.maxInt(u2)) {
-                        dest.rect(pos * scale + dest_ul, scale, @intCast(u2, value));
+                        dest.rect(pos * scale + dest_ul, scale, @as(u2, @intCast(value)));
                     }
                 }
             }
         }
         pub fn rect(dest: Tex(.mut), ul: Vec2, wh: Vec2, color: u2) void {
-            for (range(std.math.lossyCast(usize, wh[y]))) |_, y_usz| {
-                const yp = @intCast(i32, y_usz);
-                for (range(std.math.lossyCast(usize, wh[x]))) |_, x_usz| {
-                    const xp = @intCast(i32, x_usz);
+            for (range(std.math.lossyCast(usize, wh[y])), 0..) |_, y_usz| {
+                const yp = @as(i32, @intCast(y_usz));
+                for (range(std.math.lossyCast(usize, wh[x])), 0..) |_, x_usz| {
+                    const xp = @as(i32, @intCast(x_usz));
 
                     dest.set(ul + Vec2{ xp, yp }, color);
                 }
@@ -76,16 +76,16 @@ pub fn Tex(comptime mbl: Mbl) type {
             if (@reduce(.Or, pos < w4.Vec2{ 0, 0 })) return 0;
             if (@reduce(.Or, pos >= tex.size)) return 0;
             const index_unscaled = pos[w4.x] + (pos[w4.y] * tex.size[w4.x]);
-            const index = @intCast(usize, @divFloor(index_unscaled, 4));
-            const byte_idx = @intCast(u3, (@mod(index_unscaled, 4)) * 2);
-            return @truncate(u2, tex.data[index] >> byte_idx);
+            const index = @as(usize, @intCast(@divFloor(index_unscaled, 4)));
+            const byte_idx = @as(u3, @intCast((@mod(index_unscaled, 4)) * 2));
+            return @as(u2, @truncate(tex.data[index] >> byte_idx));
         }
         pub fn set(tex: Tex(.mut), pos: Vec2, value: u2) void {
             if (@reduce(.Or, pos < w4.Vec2{ 0, 0 })) return;
             if (@reduce(.Or, pos >= tex.size)) return;
             const index_unscaled = pos[w4.x] + (pos[w4.y] * tex.size[w4.x]);
-            const index = @intCast(usize, @divFloor(index_unscaled, 4));
-            const byte_idx = @intCast(u3, (@mod(index_unscaled, 4)) * 2);
+            const index = @as(usize, @intCast(@divFloor(index_unscaled, 4)));
+            const byte_idx = @as(u3, @intCast((@mod(index_unscaled, 4)) * 2));
             tex.data[index] &= ~(@as(u8, 0b11) << byte_idx);
             tex.data[index] |= @as(u8, value) << byte_idx;
         }
@@ -104,18 +104,18 @@ pub fn range(len: usize) []const void {
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-pub const PALETTE: *[4]u32 = @intToPtr(*[4]u32, 0x04);
-pub const DRAW_COLORS: *u16 = @intToPtr(*u16, 0x14);
-pub const GAMEPAD1: *const Gamepad = @intToPtr(*const Gamepad, 0x16);
-pub const GAMEPAD2: *const Gamepad = @intToPtr(*const Gamepad, 0x17);
-pub const GAMEPAD3: *const Gamepad = @intToPtr(*const Gamepad, 0x18);
-pub const GAMEPAD4: *const Gamepad = @intToPtr(*const Gamepad, 0x19);
+pub const PALETTE: *[4]u32 = @as(*[4]u32, @ptrFromInt(0x04));
+pub const DRAW_COLORS: *u16 = @as(*u16, @ptrFromInt(0x14));
+pub const GAMEPAD1: *const Gamepad = @as(*const Gamepad, @ptrFromInt(0x16));
+pub const GAMEPAD2: *const Gamepad = @as(*const Gamepad, @ptrFromInt(0x17));
+pub const GAMEPAD3: *const Gamepad = @as(*const Gamepad, @ptrFromInt(0x18));
+pub const GAMEPAD4: *const Gamepad = @as(*const Gamepad, @ptrFromInt(0x19));
 
-pub const MOUSE: *const Mouse = @intToPtr(*const Mouse, 0x1a);
-pub const SYSTEM_FLAGS: *SystemFlags = @intToPtr(*SystemFlags, 0x1f);
-pub const FRAMEBUFFER: *[CANVAS_SIZE * CANVAS_SIZE / 4]u8 = @intToPtr(*[6400]u8, 0xA0);
+pub const MOUSE: *const Mouse = @as(*const Mouse, @ptrFromInt(0x1a));
+pub const SYSTEM_FLAGS: *SystemFlags = @as(*SystemFlags, @ptrFromInt(0x1f));
+pub const FRAMEBUFFER: *[CANVAS_SIZE * CANVAS_SIZE / 4]u8 = @as(*[6400]u8, @ptrFromInt(0xA0));
 pub const ctx = Tex(.mut){
-    .data = @intToPtr([*]u8, 0xA0), // apparently casting *[N]u8 to [*]u8 at comptime causes a compiler crash
+    .data = @as([*]u8, @ptrFromInt(0xA0)), // apparently casting *[N]u8 to [*]u8 at comptime causes a compiler crash
     .size = .{ CANVAS_SIZE, CANVAS_SIZE },
 };
 
@@ -132,13 +132,13 @@ pub const Gamepad = packed struct {
     }
 
     pub fn diff(this: @This(), other: @This()) @This() {
-        return @bitCast(@This(), @bitCast(u8, this) ^ @bitCast(u8, other));
+        return @as(@This(), @bitCast(@as(u8, @bitCast(this)) ^ @as(u8, @bitCast(other))));
     }
 
     pub fn justPressed(this: @This(), last: @This()) @This() {
-        const thisbits = @bitCast(u8, this);
-        const lastbits = @bitCast(u8, last);
-        return @bitCast(@This(), (thisbits ^ lastbits) & thisbits);
+        const thisbits = @as(u8, @bitCast(this));
+        const lastbits = @as(u8, @bitCast(last));
+        return @as(@This(), @bitCast((thisbits ^ lastbits) & thisbits));
     }
 
     pub fn format(value: @This(), comptime _: []const u8, _: @import("std").fmt.FormatOptions, writer: anytype) !void {
@@ -169,12 +169,12 @@ pub const MouseButtons = packed struct {
     middle: bool,
     _: u5 = 0,
     pub fn diff(this: @This(), other: @This()) @This() {
-        return @bitCast(@This(), @bitCast(u8, this) ^ @bitCast(u8, other));
+        return @as(@This(), @bitCast(@as(u8, @bitCast(this)) ^ @as(u8, @bitCast(other))));
     }
     pub fn justPressed(this: @This(), last: @This()) @This() {
-        const thisbits = @bitCast(u8, this);
-        const lastbits = @bitCast(u8, last);
-        return @bitCast(@This(), (thisbits ^ lastbits) & thisbits);
+        const thisbits = @as(u8, @bitCast(this));
+        const lastbits = @as(u8, @bitCast(last));
+        return @as(@This(), @bitCast((thisbits ^ lastbits) & thisbits));
     }
     comptime {
         if (@sizeOf(@This()) != @sizeOf(u8)) unreachable;
@@ -219,13 +219,13 @@ pub const externs = struct {
 /// Copies pixels to the framebuffer.
 pub fn blit(sprite: []const u8, pos: Vec2, size: Vec2, flags: BlitFlags) void {
     if (sprite.len * 8 < size[x] * size[y]) unreachable;
-    externs.blit(sprite.ptr, pos[x], pos[y], size[x], size[y], @bitCast(u32, flags));
+    externs.blit(sprite.ptr, pos[x], pos[y], size[x], size[y], @as(u32, @bitCast(flags)));
 }
 
 /// Copies a subregion within a larger sprite atlas to the framebuffer.
 pub fn blitSub(sprite: []const u8, pos: Vec2, size: Vec2, src: Vec2, strie: i32, flags: BlitFlags) void {
     if (sprite.len * 8 < size[x] * size[y]) unreachable;
-    externs.blitSub(sprite.ptr, pos[x], pos[y], size[x], size[y], @intCast(u32, src[x]), @intCast(u32, src[y]), strie, @bitCast(u32, flags));
+    externs.blitSub(sprite.ptr, pos[x], pos[y], size[x], size[y], @as(u32, @intCast(src[x])), @as(u32, @intCast(src[y])), strie, @as(u32, @bitCast(flags)));
 }
 
 pub const BlitFlags = packed struct {
@@ -270,7 +270,7 @@ pub fn text(str: []const u8, pos: Vec2) void {
 
 /// Plays a sound tone.
 pub fn tone(frequency: ToneFrequency, duration: ToneDuration, volume: u32, flags: ToneFlags) void {
-    return externs.tone(@bitCast(u32, frequency), @bitCast(u32, duration), volume, @bitCast(u8, flags));
+    return externs.tone(@as(u32, @bitCast(frequency)), @as(u32, @bitCast(duration)), volume, @as(u8, @bitCast(flags)));
 }
 pub const ToneFrequency = packed struct {
     start: u16,

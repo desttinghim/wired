@@ -40,10 +40,10 @@ pub fn reset(this: *@This(), initialState: []const u8) void {
 
 pub fn write_diff(this: *@This(), initialState: []const u8, buf: anytype) !u8 {
     var written: u8 = 0;
-    for (initialState) |init_tile, i| {
+    for (initialState, 0..) |init_tile, i| {
         if (this.tiles[i] != init_tile) {
-            const x = @intCast(u8, i % @intCast(usize, this.map_size[0]));
-            const y = @intCast(u8, @divTrunc(i, @intCast(usize, this.map_size[0])));
+            const x = @as(u8, @intCast(i % @as(usize, @intCast(this.map_size[0]))));
+            const y = @as(u8, @intCast(@divTrunc(i, @as(usize, @intCast(this.map_size[0])))));
             const temp = [3]u8{ x, y, this.tiles[i] };
             try buf.writeAll(&temp);
             written += 1;
@@ -67,7 +67,7 @@ pub fn set_cell(this: *@This(), cell: Cell, tile: u8) !void {
     const y = cell[1];
     if (x < 0 or x > this.map_size[0] or y < 0 or y > this.map_size[1]) return error.OutOfBounds;
     const i = x + y * this.map_size[0];
-    this.tiles[@intCast(usize, i)] = tile;
+    this.tiles[@as(usize, @intCast(i))] = tile;
 }
 
 pub fn get_cell(this: @This(), cell: Cell) ?u8 {
@@ -75,7 +75,7 @@ pub fn get_cell(this: @This(), cell: Cell) ?u8 {
     const y = cell[1];
     if (x < 0 or x >= this.map_size[0] or y < 0 or y >= this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
-    return this.tiles[@intCast(u32, i)];
+    return this.tiles[@as(u32, @intCast(i))];
 }
 
 pub fn draw(this: @This(), offset: Vec2) void {
@@ -84,13 +84,13 @@ pub fn draw(this: @This(), offset: Vec2) void {
     while (y < height) : (y += 1) {
         var x: usize = 0;
         while (x < width) : (x += 1) {
-            const cell = Vec2{ @intCast(i32, x), @intCast(i32, y) } + offset;
-            const pos = Vec2{ @intCast(i32, x), @intCast(i32, y) } * tile_size;
+            const cell = Vec2{ @as(i32, @intCast(x)), @as(i32, @intCast(y)) } + offset;
+            const pos = Vec2{ @as(i32, @intCast(x)), @as(i32, @intCast(y)) } * tile_size;
             const tile = this.get_cell(cell) orelse continue;
             if (tile == world.Tiles.Empty) continue;
             const t = Vec2{
-                @intCast(i32, (tile % tilemap_width) * tile_width),
-                @intCast(i32, (tile / tilemap_width) * tile_width),
+                @as(i32, @intCast((tile % tilemap_width) * tile_width)),
+                @as(i32, @intCast((tile / tilemap_width) * tile_width)),
             };
             w4.blitSub(
                 &assets.tiles,
@@ -108,7 +108,7 @@ pub fn draw(this: @This(), offset: Vec2) void {
 fn getTile(this: @This(), x: i32, y: i32) ?u8 {
     if (x < 0 or x >= this.map_size[0] or y < 0 or y >= this.map_size[1]) return null;
     const i = x + y * this.map_size[0];
-    return this.tiles[@intCast(u32, i)];
+    return this.tiles[@as(u32, @intCast(i))];
 }
 
 pub const BodyInfo = struct {
@@ -127,14 +127,14 @@ pub fn collide(this: @This(), body: BodyInfo) CollisionInfo {
     const bot_right = (body.rect.pos + body.rect.size) / tile_sizef;
     var collisions = CollisionInfo.init();
 
-    var i: isize = @floatToInt(i32, top_left[0]);
-    while (i <= @floatToInt(i32, bot_right[0])) : (i += 1) {
-        var a: isize = @floatToInt(i32, top_left[1]);
-        while (a <= @floatToInt(i32, bot_right[1])) : (a += 1) {
+    var i: isize = @as(i32, @intFromFloat(top_left[0]));
+    while (i <= @as(i32, @intFromFloat(bot_right[0]))) : (i += 1) {
+        var a: isize = @as(i32, @intFromFloat(top_left[1]));
+        while (a <= @as(i32, @intFromFloat(bot_right[1]))) : (a += 1) {
             const tile = this.getTile(i, a) orelse continue;
-            const tilex = @intToFloat(f32, i * tile_width);
-            const tiley = @intToFloat(f32, a * tile_height);
-            const bottom = @floatToInt(i32, bot_right[1]);
+            const tilex = @as(f32, @floatFromInt(i * tile_width));
+            const tiley = @as(f32, @floatFromInt(a * tile_height));
+            const bottom = @as(i32, @intFromFloat(bot_right[1]));
             const foot = body.rect.pos[1] + body.rect.size[1];
 
             if (world.Tiles.is_oneway(tile)) {
@@ -185,14 +185,14 @@ pub fn trace(this: @This()) void {
 }
 
 pub fn traceDraw(this: @This()) void {
-    for (this.tiles) |tile, i| {
+    for (this.tiles, 0..) |tile, i| {
         const t = Vec2{
-            @intCast(i32, (tile % tilemap_width) * tile_width),
-            @intCast(i32, (tile / tilemap_width) * tile_width),
+            @as(i32, @intCast((tile % tilemap_width) * tile_width)),
+            @as(i32, @intCast((tile / tilemap_width) * tile_width)),
         };
         const pos = Vec2{
-            @intCast(i32, (i % width) * tile_width),
-            @intCast(i32, (i / width) * tile_width),
+            @as(i32, @intCast((i % width) * tile_width)),
+            @as(i32, @intCast((i / width) * tile_width)),
         };
         w4.trace("{}, {}, {}, {}, {}", .{
             pos,
